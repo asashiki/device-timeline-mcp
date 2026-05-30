@@ -1,0 +1,16 @@
+services:
+  collector:
+    build: .
+    container_name: device-timeline-mcp
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_PATH: /data/device-timeline.sqlite
+      LABELS_PATH: /app/config/app-labels.json
+    ports:
+      - "${PORT:-4200}:4200"
+    volumes:
+      # SQLite database (and future backups) survive container rebuilds.
+      - ./data:/data
+      # Edit app-labels.json here to rename apps / tweak phrases without a rebuild.
+      - ./config:/app/config

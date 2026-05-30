@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd template for the macOS device-timeline agent.
+  Edit the two REPLACE_ME paths, then install:
+
+    cp com.devicetimeline.agent.plist.example ~/Library/LaunchAgents/com.devicetimeline.agent.plist
+    # edit the file
+    launchctl load -w ~/Library/LaunchAgents/com.devicetimeline.agent.plist
+
+  Uninstall:
+    launchctl unload -w ~/Library/LaunchAgents/com.devicetimeline.agent.plist
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.devicetimeline.agent</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/env</string>
+    <string>python3</string>
+    <string>REPLACE_ME/absolute/path/to/agent.py</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>REPLACE_ME/absolute/path/to/agents/macos</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/devicetimeline-mac-agent.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/devicetimeline-mac-agent.err.log</string>
+</dict>
+</plist>

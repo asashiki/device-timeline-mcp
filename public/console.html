@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>设备时间线 Console</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px; font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: #0e1116; color: #e6edf3; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  h2 { font-size: 14px; margin: 24px 0 10px; color: #8b949e; font-weight: 600; }
+  .bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+  input { background: #161b22; border: 1px solid #30363d; color: #e6edf3; border-radius: 6px; padding: 6px 10px; min-width: 240px; }
+  button { background: #238636; border: 0; color: #fff; border-radius: 6px; padding: 6px 14px; cursor: pointer; }
+  button:hover { background: #2ea043; }
+  .muted { color: #8b949e; font-size: 12px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+  .card { background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 14px; }
+  .card .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .name { font-weight: 600; } .plat { font-size: 11px; color: #8b949e; text-transform: uppercase; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+  .on { background: #3fb950; } .off { background: #6e7681; }
+  .live { margin: 8px 0 4px; } .meta { font-size: 12px; color: #8b949e; }
+  table { width: 100%; border-collapse: collapse; }
+  td, th { text-align: left; padding: 6px 8px; border-bottom: 1px solid #21262d; font-size: 13px; }
+  th { color: #8b949e; font-weight: 600; }
+  .tl { font-size: 13px; padding: 4px 0; border-bottom: 1px solid #21262d; }
+  .tl .t { color: #58a6ff; }
+  .err { color: #f85149; } .empty { color: #8b949e; font-style: italic; }
+</style>
+</head>
+<body>
+  <h1>设备时间线 Console</h1>
+  <div class="muted">纯前端测试页 · 直连本服务只读接口 · 时间按设备时区展示</div>
+  <div class="bar">
+    <input id="base" placeholder="API base（留空=同源）" />
+    <button id="refresh">刷新</button>
+    <span class="muted" id="status"></span>
+  </div>
+
+  <h2>当前设备状态</h2>
+  <div id="devices" class="grid"></div>
+  <h2>今日时间线（最近 50 条）</h2>
+  <div id="timeline"></div>
+  <h2>今日应用统计</h2>
+  <div id="summary"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,(c)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+function hm(iso){return new Intl.DateTimeFormat("zh-CN",{hour:"2-digit",minute:"2-digit"}).format(new Date(iso));}
+function ago(iso){const m=Math.round((Date.now()-new Date(iso).getTime())/60000);if(m<1)return"刚刚";if(m<60)return m+" 分钟前";const h=Math.floor(m/60);return h<24?h+" 小时前":Math.floor(h/24)+" 天前";}
+function dur(s){if(!s)return"进行中";if(s<60)return s+"秒";const m=Math.round(s/60);return m>=60?Math.floor(m/60)+"h"+(m%60)+"m":m+"分钟";}
+
+async function getJson(base,path){const r=await fetch(base+path,{headers:{accept:"application/json"}});if(!r.ok)throw new Error(path+" → "+r.status);return r.json();}
+
+function renderDevices(data){
+  const list=(data&&data.devices)||[];
+  $("devices").innerHTML = list.length ? list.map((d)=>{
+    const e=d.extra||{};
+    const batt=e.battery_percent!=null?` · 电量 ${e.battery_percent}%${e.battery_charging?"⚡":""}`:"";
+    const net=e.network_type?` · ${esc(e.network_type)}`:"";
+    return `<div class="card"><div class="top"><span class="name">${esc(d.deviceName)}</span><span class="plat">${esc(d.platform)}</span></div>
+      <div class="live">${esc(d.live)}</div>
+      <div class="meta"><span class="dot ${d.isOnline?"on":"off"}"></span>${d.isOnline?"在线":"离线"} · ${ago(d.lastSeenAt)}${batt}${net}</div></div>`;
+  }).join("") : '<div class="empty">无设备数据</div>';
+}
+function renderTimeline(data){
+  const acts=((data&&data.activities)||[]).slice(-50).reverse();
+  $("timeline").innerHTML = acts.length ? acts.map((a)=>
+    `<div class="tl"><span class="t">${hm(a.startedAt)}</span> ${esc(a.live)} · ${dur(a.durationSeconds)} <span class="muted">[${esc(a.deviceId)}]</span></div>`
+  ).join("") : '<div class="empty">今天还没有活动记录</div>';
+}
+function renderSummary(data){
+  const rows=(data&&data.perApp)||[];
+  $("summary").innerHTML = rows.length ? `<table><thead><tr><th>应用</th><th>appId</th><th>时长</th><th>次数</th></tr></thead><tbody>${
+    rows.map((p)=>`<tr><td>${esc(p.appName)}</td><td class="muted">${esc(p.appId)}</td><td>${dur(p.totalSeconds)}</td><td>${p.count}</td></tr>`).join("")
+  }</tbody></table>` : '<div class="empty">暂无统计</div>';
+}
+
+async function load(){
+  const base=$("base").value.replace(/\/$/,"");
+  $("status").textContent="加载中…";
+  const sections=[["devices","/api/devices/current",renderDevices],["timeline","/api/devices/timeline-query?limit=200",renderTimeline],["summary","/api/devices/activity-summary",renderSummary]];
+  await Promise.all(sections.map(async([id,path,render])=>{
+    try{render(await getJson(base,path));}catch(err){$(id).innerHTML=`<div class="err">加载失败：${esc(err.message)}</div>`;}
+  }));
+  $("status").textContent="更新于 "+hm(new Date().toISOString());
+}
+$("refresh").addEventListener("click",load);
+load();
+setInterval(load,30000);
+</script>
+</body>
+</html>

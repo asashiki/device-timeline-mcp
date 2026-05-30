@@ -1,0 +1,25 @@
+{
+  "serverUrl": "https://your-host",
+  "token": "your-mac-device-token",
+  "deviceName": "Mac",
+  "reportIntervalSeconds": 10,
+  "heartbeatIntervalSeconds": 60,
+  "afkThresholdSeconds": 300,
+  "customApps": [
+    {
+      "appId": "com.apple.Safari",
+      "customAppName": "Safari",
+      "customDescription": "正在用 Safari 看「{title}」"
+    },
+    {
+      "appId": "com.microsoft.VSCode",
+      "customAppName": "VS Code",
+      "customDescription": "正在 coding：{title}"
+    },
+    {
+      "appId": "com.tencent.xinWeChat",
+      "customAppName": "微信",
+      "customDescription": "在微信里~"
+    }
+  ]
+}
