@@ -104,15 +104,6 @@ npm run build && npm start      # 或：npm run dev
 
 桌面端 / Android 采集端做的是同一件事：每 ~10 秒采样一次前台应用 + 窗口标题，带着自己的 Bearer token `POST /api/devices/report`。你要配的只有**服务器地址**和设备 **token**。
 
-### 不想自己编译？用 Releases 里的成品
-
-你那边如果没有编译环境，仓库内置了 GitHub Actions：
-
-- 推到 `main` 或手动触发 → 自动编译 **APK** 和 **Windows exe**，传到 workflow 的 **Artifacts**。
-- 打一个 `v*` 标签（如 `git tag v1.0.0 && git push --tags`）→ 编译产物会**自动附到对应的 GitHub Release** 上。
-
-默认 APK 是 debug 签名的（可直接安装）。想要正式签名，在仓库 Secrets 里配 `KEYSTORE_BASE64`、`KEYSTORE_PASSWORD`、`KEY_ALIAS`、`KEY_PASSWORD`，Actions 就会出 release 签名包。
-
 ### Android（手机 / 平板）
 
 从 [`reporters/android`](reporters/android) 编译 APK（Android Studio 或 `./gradlew assembleRelease`），然后：
@@ -128,7 +119,7 @@ npm run build && npm start      # 或：npm run dev
 
 ### iOS —— 快捷指令自动化
 
-iOS 没有后台采集端，靠 **快捷指令** app 里两个**个人自动化**加一个每小时快照来驱动。
+iOS 没有后台采集端，靠 **快捷指令** app 里两个**个人自动化**来驱动。
 
 **A. "打开 App" 自动化**（打开任意被追踪的 app 时触发）：
 
@@ -141,8 +132,6 @@ iOS 没有后台采集端，靠 **快捷指令** app 里两个**个人自动化*
 **B. "关闭 App" 自动化** —— 同上，把 `action` 设成 `close`。
 
 ![iOS 关闭应用自动化](https://picture-img.leqazwsxedc.workers.dev/image_2026-05-31_06-17-56.png)
-
-因为 iOS 只在开/关事件（外加可选的每小时快照）时上报，所以一台 iOS 设备在最后一次事件后会被认为"在线"**65 分钟**，而不是 5 分钟。
 
 完整快捷指令走法和 body 格式见 [`reporters/ios`](reporters/ios)。
 
@@ -219,7 +208,6 @@ https://<你的域名>/mcp
 | `GET /api/app-labels` | 原始的 appId → {name, desc} 映射 |
 | `POST /api/devices/report` | **上报入口**（Android/桌面采集端，Bearer token） |
 | `POST /api/devices/ios/app-event` | **上报** iOS 开/关（Bearer token） |
-| `POST /api/devices/ios/snapshot` | **上报** iOS 电量/专注快照（Bearer token） |
 
 `current` / `timeline` 的响应里带了服务端算好的 `appName` 和 `live`（一句自然语言），前端不用自己重写标签逻辑。`/console` 页面就是个现成示例。
 

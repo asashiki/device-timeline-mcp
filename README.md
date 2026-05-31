@@ -109,20 +109,6 @@ The desktop/Android reporters do the same thing: sample the foreground app + win
 title every ~10s and `POST /api/devices/report` with their Bearer token. All you
 configure is the **server URL** and the device **token**.
 
-### Don't want to compile? Grab prebuilt binaries
-
-This repo ships GitHub Actions that build the **APK** and the **Windows exe** for
-you:
-
-- push to `main` or run the workflow manually → artifacts appear under the
-  workflow run's **Artifacts**.
-- push a `v*` tag (`git tag v1.0.0 && git push --tags`) → the built APK + exe are
-  **attached to the matching GitHub Release** automatically.
-
-The APK is debug-signed by default (installable as-is). For a release-signed
-build, add repo secrets `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`,
-`KEY_PASSWORD`.
-
 ### Android (phone & tablet)
 
 Build the APK from [`reporters/android`](reporters/android) (Android Studio or
@@ -140,7 +126,7 @@ Build the APK from [`reporters/android`](reporters/android) (Android Studio or
 ### iOS — Shortcuts automations
 
 iOS has no background reporter; you drive it with two **Personal Automations** in the
-**Shortcuts** app plus an hourly snapshot.
+**Shortcuts** app.
 
 **A. "App Opened" automation** (fires when you open any tracked app):
 
@@ -156,12 +142,8 @@ iOS has no background reporter; you drive it with two **Personal Automations** i
 
 ![iOS App Closed automation](https://picture-img.leqazwsxedc.workers.dev/image_2026-05-31_06-17-56.png)
 
-Because iOS only reports on open/close events (plus an optional hourly Time-of-Day
-snapshot), an iOS device is considered "online" for **65 minutes** after its last
-event, not 5.
-
 See [`reporters/ios`](reporters/ios) for the full Shortcuts walkthrough and the
-`/api/devices/ios/app-event` + `/api/devices/ios/snapshot` body shapes.
+`/api/devices/ios/app-event` body shape.
 
 ### Windows
 
@@ -248,7 +230,6 @@ CORS is enabled (`CORS_ORIGIN`, default `*`). All timestamps are **UTC ISO**;
 | `GET /api/app-labels` | the raw appId → {name, desc} map |
 | `POST /api/devices/report` | **ingest** (Android/desktop reporters, Bearer token) |
 | `POST /api/devices/ios/app-event` | **ingest** iOS open/close (Bearer token) |
-| `POST /api/devices/ios/snapshot` | **ingest** iOS battery/focus snapshot (Bearer token) |
 
 `current` / `timeline` responses include server-computed `appName` and `live`
 (a natural-language phrase), so frontends don't need to reimplement the label
