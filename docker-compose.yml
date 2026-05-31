@@ -10,7 +10,7 @@ services:
     ports:
       - "${PORT:-4200}:4200"
     volumes:
-      # SQLite database (and future backups) survive container rebuilds.
+      # SQLite database survives container rebuilds (back it up yourself; see README).
       - ./data:/data
       # Edit app-labels.json here to rename apps / tweak phrases without a rebuild.
       - ./config:/app/config
