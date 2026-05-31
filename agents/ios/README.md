@@ -28,14 +28,14 @@ Fires when you open any tracked app.
        automation)
      - `action` (Text) = `open`
 
-![App opened automation](../../docs/img/ios-app-opened.png)
+![App opened automation](https://picture-img.leqazwsxedc.workers.dev/image_2026-05-31_06-17-49.png)
 
 ## B. "App Closed" automation
 
 Same as **A**, but select **Is Closed** and set `action` = `close`. The `app`
 field can be omitted for close events.
 
-![App closed automation](../../docs/img/ios-app-closed.png)
+![App closed automation](https://picture-img.leqazwsxedc.workers.dev/image_2026-05-31_06-17-56.png)
 
 ## C. (Optional) hourly snapshot
 

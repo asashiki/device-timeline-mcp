@@ -150,11 +150,11 @@ iOS has no background agent; you drive it with two **Personal Automations** in t
   `{"app":"<App Name>","action":"open"}`.
 - Turn **off** "Ask Before Running".
 
-> 📷 Screenshot placeholder: `docs/img/ios-app-opened.png`
+![iOS App Opened automation](https://picture-img.leqazwsxedc.workers.dev/image_2026-05-31_06-17-49.png)
 
 **B. "App Closed" automation** — same as above with `"action":"close"`.
 
-> 📷 Screenshot placeholder: `docs/img/ios-app-closed.png`
+![iOS App Closed automation](https://picture-img.leqazwsxedc.workers.dev/image_2026-05-31_06-17-56.png)
 
 Because iOS only reports on open/close events (plus an optional hourly Time-of-Day
 snapshot), an iOS device is considered "online" for **65 minutes** after its last

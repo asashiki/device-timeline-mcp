@@ -136,7 +136,11 @@ iOS 没有后台 agent，靠 **快捷指令** app 里两个**个人自动化**�
 - 动作：**获取 URL 内容** → `POST https://<host>/api/devices/ios/app-event`，请求头 `Authorization: Bearer <ios token>`，JSON body `{"app":"<App 名>","action":"open"}`。
 - **关掉**"运行前询问"。
 
+![iOS 打开应用自动化](https://picture-img.leqazwsxedc.workers.dev/image_2026-05-31_06-17-49.png)
+
 **B. "关闭 App" 自动化** —— 同上，把 `action` 设成 `close`。
+
+![iOS 关闭应用自动化](https://picture-img.leqazwsxedc.workers.dev/image_2026-05-31_06-17-56.png)
 
 因为 iOS 只在开/关事件（外加可选的每小时快照）时上报，所以一台 iOS 设备在最后一次事件后会被认为"在线"**65 分钟**，而不是 5 分钟。
 
