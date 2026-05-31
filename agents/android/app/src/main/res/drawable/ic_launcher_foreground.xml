@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Clock face -->
+    <path
+        android:pathData="M54,30 m-26,0 a26,26 0 1,0 52,0 a26,26 0 1,0 -52,0"
+        android:fillColor="#FFFFFF" />
+    <path
+        android:pathData="M54,30 m-21,0 a21,21 0 1,0 42,0 a21,21 0 1,0 -42,0"
+        android:fillColor="#1E3A5F" />
+    <!-- Clock hands -->
+    <path
+        android:pathData="M54,30 L54,16"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M54,30 L65,34"
+        android:strokeColor="#60A5FA"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round" />
+    <!-- Timeline bars beneath -->
+    <path
+        android:pathData="M30,66 h48"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="4"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M30,76 h34"
+        android:strokeColor="#93C5FD"
+        android:strokeWidth="4"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M30,86 h42"
+        android:strokeColor="#60A5FA"
+        android:strokeWidth="4"
+        android:strokeLineCap="round" />
+    <!-- Timeline dots -->
+    <path
+        android:pathData="M30,66 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0"
+        android:fillColor="#2563EB" />
+    <path
+        android:pathData="M30,76 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0"
+        android:fillColor="#2563EB" />
+    <path
+        android:pathData="M30,86 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0"
+        android:fillColor="#2563EB" />
+</vector>

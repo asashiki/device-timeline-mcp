@@ -1,0 +1,235 @@
+# device-timeline-mcp
+
+> [English](README.md) | **中文**
+
+自托管、单用户的**多设备活动时间线收集器**，内置 **MCP 服务器**。
+
+它记录*你此刻在哪台设备上用什么应用*，覆盖 **Android、iOS、Windows、macOS**，统一存进一个 SQLite 数据库，并通过三种方式暴露出来：
+
+- 一个**只读 HTTP API**（给你自己的状态页 / 前端用）；
+- 一个**网页控制台**，用来直接看数据；
+- 一个 **MCP 服务器**，让 AI 助手（Claude Desktop、Claude Code…）回答"他现在在干嘛？" / "今天在 B站 花了多久？"。
+
+单用户、自托管、没有账号系统。你跑一个收集器，每台设备用各自的 token 上报。
+
+---
+
+## 架构
+
+```
+┌─────────────┐   HTTPS POST /api/devices/report（Bearer token）
+│  各端 agent  │ ───────────────────────────────────────────────┐
+│ android/ios │                                                 ▼
+│ windows/mac │                                         ┌──────────────────┐
+└─────────────┘                                         │  收集器           │
+                                                        │ （本服务）        │
+┌─────────────┐   GET /api/devices/*（只读）             │  Fastify+SQLite  │
+│  你的网页前端 │ ◀──────────────────────────────────────▶│  + /console      │
+└─────────────┘                                         └──────────────────┘
+                                                                 ▲
+┌─────────────┐   stdio（跑在你的电脑上）                         │ HTTP
+│ Claude /    │ ──▶  src/mcp/server.ts  ────────────────────────┘
+│ MCP 客户端   │      (device_status / device_timeline / device_activity_summary)
+└─────────────┘
+```
+
+**收集器**跑在服务器上（Docker）。**MCP 服务器**是个很薄的 stdio 进程，跑在你 AI 客户端所在的机器上，它只是去调收集器的只读 API。
+
+---
+
+## 快速开始（Docker）
+
+```bash
+git clone <this-repo> device-timeline-mcp
+cd device-timeline-mcp
+cp .env.example .env
+# 编辑 .env → 给每台设备生成一个 token（见下文）
+docker compose up -d --build
+```
+
+打开 `http://<host>:4200/console` —— 设备开始上报后就会一台台出现。健康检查：`curl http://<host>:4200/health`。
+
+### 不用 Docker（Node ≥ 22.5）
+
+```bash
+npm install
+cp .env.example .env   # 编辑它
+npm run build && npm start      # 或：npm run dev
+```
+
+> **为什么要 Node 22.5+？** 收集器用的是 Node 自带的 `node:sqlite`，不需要编译任何原生模块。
+
+---
+
+## 三步上手
+
+1. **起收集器**：照上面 Docker 那段跑起来，确认 `/console` 能打开。
+2. **配 token**：在 `.env` 的 `DEVICE_TOKENS_JSON` 里给每台设备一行（见下一节），每个 token 用 `openssl rand -hex 32` 生成。
+3. **装 agent**：去 [`agents/`](agents/) 对应平台的目录，填上**服务器地址**和这台设备的 **token**，剩下的它自己上报。
+
+---
+
+## 设备 token 与多设备命名
+
+每台设备用自己的 token 认证。在 `.env` 的 `DEVICE_TOKENS_JSON` 里定义（也可以用 `DEVICE_TOKENS_FILE` 指向一个 JSON 文件）。
+
+```jsonc
+[
+  {"token":"<openssl rand -hex 32>","deviceId":"android-phone","deviceName":"我的手机","platform":"android"},
+  {"token":"<openssl rand -hex 32>","deviceId":"android-tablet","deviceName":"平板 Y700","platform":"android"},
+  {"token":"<openssl rand -hex 32>","deviceId":"windows-pc","deviceName":"台式机","platform":"windows"},
+  {"token":"<openssl rand -hex 32>","deviceId":"mac-laptop","deviceName":"MacBook","platform":"macos"},
+  {"token":"<openssl rand -hex 32>","deviceId":"ios-phone","deviceName":"iPhone","platform":"ios"}
+]
+```
+
+**"同平台两台设备"的关键点**：设备靠 **`deviceId`** 区分，而*不是*靠平台。如果你有一台 Android **手机**和一台 Android **平板**，给它们**不同的 `deviceId`**（比如 `android-phone` 和 `android-tablet`），各配**各自的 token**。两台都是 `platform: "android"`，都落进同一批表；查询时都能按 `deviceId` 过滤，控制台里也分成两张卡片。
+
+- `deviceId`：kebab-case、唯一、稳定。它是连接键，**之后别改**。
+- `deviceName`：随便写的显示名（控制台 / MCP 输出里展示）。
+- 每个 token 用 `openssl rand -hex 32` 生成。
+
+---
+
+## 各平台 agent 安装
+
+agent 都在 [`agents/`](agents/)，每个都有自己的 README：
+
+| 平台 | 源码 | 说明 |
+|---|---|---|
+| Android | [`agents/android`](agents/android) | 纯时间线 Kotlin 应用（前台服务） |
+| Windows | [`agents/windows`](agents/windows) | .NET 托盘程序，单文件 exe |
+| macOS | [`agents/macos`](agents/macos) | Python + launchd 守护进程 |
+| iOS | [`agents/ios`](agents/ios) | 快捷指令自动化（没有可安装的 app） |
+
+桌面端 / Android agent 做的是同一件事：每 ~10 秒采样一次前台应用 + 窗口标题，带着自己的 Bearer token `POST /api/devices/report`。你要配的只有**服务器地址**和设备 **token**。
+
+### 不想自己编译？用 Releases 里的成品
+
+你那边如果没有编译环境，仓库内置了 GitHub Actions：
+
+- 推到 `main` 或手动触发 → 自动编译 **APK** 和 **Windows exe**，传到 workflow 的 **Artifacts**。
+- 打一个 `v*` 标签（如 `git tag v1.0.0 && git push --tags`）→ 编译产物会**自动附到对应的 GitHub Release** 上。
+
+默认 APK 是 debug 签名的（可直接安装）。想要正式签名，在仓库 Secrets 里配 `KEYSTORE_BASE64`、`KEYSTORE_PASSWORD`、`KEY_ALIAS`、`KEY_PASSWORD`，Actions 就会出 release 签名包。
+
+### Android（手机 / 平板）
+
+从 [`agents/android`](agents/android) 编译 APK（Android Studio 或 `./gradlew assembleRelease`），然后：
+
+1. 把 APK 装到设备上。
+2. 打开一次 → 授予**使用情况访问**权限（设置 → 应用 → 特殊权限 → 使用情况访问），并为它**关闭电池优化**（让它后台一直上报）。
+3. 在 app 设置里填：
+   - **服务器地址**：`https://<your-host>`（或局域网 `http://host:4200`）
+   - **Token**：这台设备的 token
+4. **手机 + 平板**的话，两台都装，手机填**手机的 token**、平板填**平板的 token**。区别就这一点。
+
+> **后台留存**：Android agent 用了前台服务（Android 14+ 用 `specialUse` 类型，绕开 dataSync 在 Android 15 上的 6 小时/24 小时运行上限）、`WAKE_LOCK`、`START_STICKY`、`onTaskRemoved` 重新拉起、开机自启（BootReceiver），外加**两层看门狗**：AlarmManager `setAlarmClock`（绕过 Doze 和 MIUI/HyperOS 限制）作为主恢复路径，WorkManager 周期任务（每 ~15 分钟）作为兜底。
+
+### iOS —— 快捷指令自动化
+
+iOS 没有后台 agent，靠 **快捷指令** app 里两个**个人自动化**加一个每小时快照来驱动。
+
+**A. "打开 App" 自动化**（打开任意被追踪的 app 时触发）：
+
+- 新建自动化 → **App** → 选要追踪的 app → **已打开**。
+- 动作：**获取 URL 内容** → `POST https://<host>/api/devices/ios/app-event`，请求头 `Authorization: Bearer <ios token>`，JSON body `{"app":"<App 名>","action":"open"}`。
+- **关掉**"运行前询问"。
+
+**B. "关闭 App" 自动化** —— 同上，把 `action` 设成 `close`。
+
+因为 iOS 只在开/关事件（外加可选的每小时快照）时上报，所以一台 iOS 设备在最后一次事件后会被认为"在线"**65 分钟**，而不是 5 分钟。
+
+完整快捷指令走法和 body 格式见 [`agents/ios`](agents/ios)。
+
+### Windows
+
+1. 把 agent `.exe` 放到机器上（单文件、自包含）。
+2. 第一次运行 → 托盘图标 → **设置**：
+   - **服务器地址**：`https://<host>`
+   - **Token**：`windows-pc` 的 token
+3. 勾上**开机启动**（写一条 `HKCU\…\Run` 注册表）。
+
+### macOS
+
+1. `pip3 install -r requirements.txt`。
+2. 给运行它的终端/程序授予**辅助功能**权限（系统设置 → 隐私与安全性 → 辅助功能）—— 读窗口标题需要。
+3. 编辑 `config.json` → 填 `serverUrl` + `token`（`mac-laptop` 的 token）。
+4. 装成 launchd agent 自启（见 `agents/macos`）。
+
+---
+
+## 接入 MCP 客户端
+
+在你客户端所在的机器上跑 MCP 服务器，指向收集器：
+
+```jsonc
+// Claude Desktop: claude_desktop_config.json
+{
+  "mcpServers": {
+    "device-timeline": {
+      "command": "node",
+      "args": ["/abs/path/device-timeline-mcp/dist/mcp/server.js"],
+      "env": { "MCP_API_BASE": "https://<your-host>" }
+    }
+  }
+}
+```
+
+暴露的工具：
+
+| 工具 | 回答什么 |
+|---|---|
+| `device_status` | 每台设备此刻在干嘛（在线、前台应用、电量） |
+| `device_timeline` | 某一天的时间顺序活动（可按 `deviceId` 过滤） |
+| `device_activity_summary` | 某一天每个应用的使用时长汇总 |
+
+---
+
+## 只读 API（给你自己的前端）
+
+已开启 CORS（`CORS_ORIGIN`，默认 `*`）。所有时间戳是 **UTC ISO**；`date=` 指 `DISPLAY_TZ`（默认 `Asia/Shanghai`）下的某个日历日。
+
+| 端点 | 用途 |
+|---|---|
+| `GET /health` | 存活检查 + schema 版本 |
+| `GET /api/devices/current` | 每台设备最新状态（含 `appName`、`live` 文案） |
+| `GET /api/devices/timeline-query?date=&deviceId=&limit=` | 活动列表 |
+| `GET /api/devices/activity-summary?date=&deviceId=` | 每个应用的时长汇总 |
+| `GET /api/app-labels` | 原始的 appId → {name, desc} 映射 |
+| `POST /api/devices/report` | **上报入口**（Android/桌面 agent，Bearer token） |
+| `POST /api/devices/ios/app-event` | **上报** iOS 开/关（Bearer token） |
+| `POST /api/devices/ios/snapshot` | **上报** iOS 电量/专注快照（Bearer token） |
+
+`current` / `timeline` 的响应里带了服务端算好的 `appName` 和 `live`（一句自然语言），前端不用自己重写标签逻辑。`/console` 页面就是个现成示例。
+
+---
+
+## 自定义应用名
+
+`config/app-labels.json` 把 `appId`（Android 包名、Windows 进程名、macOS bundle id、或 iOS 应用名）映射到友好名字 + 状态短语：
+
+```json
+{ "tv.danmaku.bili": { "name": "哔哩哔哩", "desc": "正在刷 B站~" } }
+```
+
+改完**保存**即可 —— 收集器会**热重载**（不用重启、不用重新构建），因为它从挂载卷（`./config`）读。未知应用回退成路径最后一段首字母大写。
+
+---
+
+## 数据模型
+
+两张表（见 `src/db/migrations.ts`），用 `PRAGMA user_version` 做版本化迁移。
+
+- **`device_states`** —— 每台设备一行：当前前台应用、最后上报时间、`extra` JSON。
+- **`device_activities`** —— 追加式的"同一应用、时间连续"的活动段（相邻采样若在 `ACTIVITY_GRACE_SECONDS` 内会合并成一行）。
+
+SQLite 文件落在 `./data` 卷上。
+
+## 备份
+
+DB 就是 `./data` 卷上的单个文件，最简单的备份就是复制它（运行中想要一致快照，用 `sqlite3 db '.backup ...'` 或 `VACUUM INTO`）。内置的定时备份功能**已规划但尚未实现** —— `src/db/index.ts` 里留了个钩子。
+
+## 许可证
+
+MIT。

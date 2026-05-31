@@ -44,11 +44,13 @@ class TrackingService : Service() {
             ACTION_STOP -> {
                 settingsStore.setRunningEnabled(false)
                 settingsStore.appendLog("收到停止指令")
+                WatchdogWorker.cancel(applicationContext)
                 stopTracking()
                 return START_NOT_STICKY
             }
             ACTION_START, null -> {
                 settingsStore.appendLog("收到启动指令")
+                WatchdogWorker.enqueue(applicationContext)
                 startTrackingIfNeeded()
                 return START_STICKY
             }

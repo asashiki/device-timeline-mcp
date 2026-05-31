@@ -1,5 +1,7 @@
 # device-timeline-mcp
 
+> **English** | [中文](README.zh-CN.md)
+
 Self-hosted, multi-device **activity timeline collector** with a built-in **MCP server**.
 
 It tracks *what app you're using, on which device, right now* across **Android, iOS, Windows and macOS**, stores it in a single SQLite database, and exposes it three ways:
@@ -107,7 +109,21 @@ The desktop/Android agents do the same thing: sample the foreground app + window
 title every ~10s and `POST /api/devices/report` with their Bearer token. All you
 configure is the **server URL** and the device **token**.
 
-### Android (phone & tablet) — "lite" build
+### Don't want to compile? Grab prebuilt binaries
+
+This repo ships GitHub Actions that build the **APK** and the **Windows exe** for
+you:
+
+- push to `main` or run the workflow manually → artifacts appear under the
+  workflow run's **Artifacts**.
+- push a `v*` tag (`git tag v1.0.0 && git push --tags`) → the built APK + exe are
+  **attached to the matching GitHub Release** automatically.
+
+The APK is debug-signed by default (installable as-is). For a release-signed
+build, add repo secrets `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`,
+`KEY_PASSWORD`.
+
+### Android (phone & tablet)
 
 Build the APK from [`agents/android`](agents/android) (Android Studio or
 `./gradlew assembleRelease`), then:

@@ -18,6 +18,7 @@ class BootReceiver : BroadcastReceiver() {
         val settings = SettingsStore(context).load()
         if (!(settings.autoStartOnBoot && settings.isRunningEnabled)) return
 
+        WatchdogWorker.enqueue(context)
         val serviceIntent = Intent(context, TrackingService::class.java).apply {
             this.action = TrackingService.ACTION_START
         }
