@@ -1,6 +1,6 @@
-# iOS agent (Shortcuts automations)
+# iOS reporter (Shortcuts automations)
 
-iOS has no background agent you can install, so you drive it with **Shortcuts**
+iOS has no background reporter you can install, so you drive it with **Shortcuts**
 personal automations that call the collector over HTTPS. Two automations
 (app-open + app-close) give you a live timeline; an optional hourly automation
 adds battery / focus state.

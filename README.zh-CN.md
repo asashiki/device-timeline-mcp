@@ -18,7 +18,7 @@
 
 ```
 ┌─────────────┐   HTTPS POST /api/devices/report（Bearer token）
-│  各端 agent  │ ───────────────────────────────────────────────┐
+│  各端采集端  │ ───────────────────────────────────────────────┐
 │ android/ios │                                                 ▼
 │ windows/mac │                                         ┌──────────────────┐
 └─────────────┘                                         │  收集器           │
@@ -65,7 +65,7 @@ npm run build && npm start      # 或：npm run dev
 
 1. **起收集器**：照上面 Docker 那段跑起来，确认 `/console` 能打开。
 2. **配 token**：在 `.env` 的 `DEVICE_TOKENS_JSON` 里给每台设备一行（见下一节），每个 token 用 `openssl rand -hex 32` 生成。
-3. **装 agent**：去 [`agents/`](agents/) 对应平台的目录，填上**服务器地址**和这台设备的 **token**，剩下的它自己上报。
+3. **装采集端**：去 [`reporters/`](reporters/) 对应平台的目录，填上**服务器地址**和这台设备的 **token**，剩下的它自己上报。
 
 ---
 
@@ -91,18 +91,18 @@ npm run build && npm start      # 或：npm run dev
 
 ---
 
-## 各平台 agent 安装
+## 各平台采集端安装
 
-agent 都在 [`agents/`](agents/)，每个都有自己的 README：
+采集端都在 [`reporters/`](reporters/)，每个都有自己的 README：
 
 | 平台 | 源码 | 说明 |
 |---|---|---|
-| Android | [`agents/android`](agents/android) | 纯时间线 Kotlin 应用（前台服务） |
-| Windows | [`agents/windows`](agents/windows) | .NET 托盘程序，单文件 exe |
-| macOS | [`agents/macos`](agents/macos) | Python + launchd 守护进程 |
-| iOS | [`agents/ios`](agents/ios) | 快捷指令自动化（没有可安装的 app） |
+| Android | [`reporters/android`](reporters/android) | 纯时间线 Kotlin 应用（前台服务） |
+| Windows | [`reporters/windows`](reporters/windows) | .NET 托盘程序，单文件 exe |
+| macOS | [`reporters/macos`](reporters/macos) | Python + launchd 守护进程 |
+| iOS | [`reporters/ios`](reporters/ios) | 快捷指令自动化（没有可安装的 app） |
 
-桌面端 / Android agent 做的是同一件事：每 ~10 秒采样一次前台应用 + 窗口标题，带着自己的 Bearer token `POST /api/devices/report`。你要配的只有**服务器地址**和设备 **token**。
+桌面端 / Android 采集端做的是同一件事：每 ~10 秒采样一次前台应用 + 窗口标题，带着自己的 Bearer token `POST /api/devices/report`。你要配的只有**服务器地址**和设备 **token**。
 
 ### 不想自己编译？用 Releases 里的成品
 
@@ -115,7 +115,7 @@ agent 都在 [`agents/`](agents/)，每个都有自己的 README：
 
 ### Android（手机 / 平板）
 
-从 [`agents/android`](agents/android) 编译 APK（Android Studio 或 `./gradlew assembleRelease`），然后：
+从 [`reporters/android`](reporters/android) 编译 APK（Android Studio 或 `./gradlew assembleRelease`），然后：
 
 1. 把 APK 装到设备上。
 2. 打开一次 → 授予**使用情况访问**权限（设置 → 应用 → 特殊权限 → 使用情况访问），并为它**关闭电池优化**（让它后台一直上报）。
@@ -124,11 +124,11 @@ agent 都在 [`agents/`](agents/)，每个都有自己的 README：
    - **Token**：这台设备的 token
 4. **手机 + 平板**的话，两台都装，手机填**手机的 token**、平板填**平板的 token**。区别就这一点。
 
-> **后台留存**：Android agent 用了前台服务（Android 14+ 用 `specialUse` 类型，绕开 dataSync 在 Android 15 上的 6 小时/24 小时运行上限）、`WAKE_LOCK`、`START_STICKY`、`onTaskRemoved` 重新拉起、开机自启（BootReceiver），外加**两层看门狗**：AlarmManager `setAlarmClock`（绕过 Doze 和 MIUI/HyperOS 限制）作为主恢复路径，WorkManager 周期任务（每 ~15 分钟）作为兜底。
+> **后台留存**：Android 采集端用了前台服务（Android 14+ 用 `specialUse` 类型，绕开 dataSync 在 Android 15 上的 6 小时/24 小时运行上限）、`WAKE_LOCK`、`START_STICKY`、`onTaskRemoved` 重新拉起、开机自启（BootReceiver），外加**两层看门狗**：AlarmManager `setAlarmClock`（绕过 Doze 和 MIUI/HyperOS 限制）作为主恢复路径，WorkManager 周期任务（每 ~15 分钟）作为兜底。
 
 ### iOS —— 快捷指令自动化
 
-iOS 没有后台 agent，靠 **快捷指令** app 里两个**个人自动化**加一个每小时快照来驱动。
+iOS 没有后台采集端，靠 **快捷指令** app 里两个**个人自动化**加一个每小时快照来驱动。
 
 **A. "打开 App" 自动化**（打开任意被追踪的 app 时触发）：
 
@@ -144,11 +144,11 @@ iOS 没有后台 agent，靠 **快捷指令** app 里两个**个人自动化**�
 
 因为 iOS 只在开/关事件（外加可选的每小时快照）时上报，所以一台 iOS 设备在最后一次事件后会被认为"在线"**65 分钟**，而不是 5 分钟。
 
-完整快捷指令走法和 body 格式见 [`agents/ios`](agents/ios)。
+完整快捷指令走法和 body 格式见 [`reporters/ios`](reporters/ios)。
 
 ### Windows
 
-1. 把 agent `.exe` 放到机器上（单文件、自包含）。
+1. 把采集端 `.exe` 放到机器上（单文件、自包含）。
 2. 第一次运行 → 托盘图标 → **设置**：
    - **服务器地址**：`https://<host>`
    - **Token**：`windows-pc` 的 token
@@ -159,13 +159,17 @@ iOS 没有后台 agent，靠 **快捷指令** app 里两个**个人自动化**�
 1. `pip3 install -r requirements.txt`。
 2. 给运行它的终端/程序授予**辅助功能**权限（系统设置 → 隐私与安全性 → 辅助功能）—— 读窗口标题需要。
 3. 编辑 `config.json` → 填 `serverUrl` + `token`（`mac-laptop` 的 token）。
-4. 装成 launchd agent 自启（见 `agents/macos`）。
+4. 装成 launchd 守护进程自启（见 `reporters/macos`）。
 
 ---
 
 ## 接入 MCP 客户端
 
-在你客户端所在的机器上跑 MCP 服务器，指向收集器：
+有两种接法，取决于你的 AI 客户端是本地跑 MCP（stdio）还是连一个远程 URL（HTTP）。
+
+### A. 本地客户端 —— stdio（Claude Desktop、Claude Code）
+
+在你客户端所在的机器上跑自带的 stdio MCP 服务器，指向收集器：
 
 ```jsonc
 // Claude Desktop: claude_desktop_config.json
@@ -180,7 +184,19 @@ iOS 没有后台 agent，靠 **快捷指令** app 里两个**个人自动化**�
 }
 ```
 
-暴露的工具：
+### B. 远程客户端 —— HTTP / `/mcp`（claude.ai 网页版）
+
+收集器还内置了一个 **streamable-HTTP 的 MCP 端点**，挂在 `/mcp`（同一个服务、同一个端口，不用额外进程）。**claude.ai** 这类网页客户端没法用 stdio，只能连 URL。把客户端的「自定义 / 远程 MCP 连接器」指向：
+
+```
+https://<你的域名>/mcp
+```
+
+- **域名你自己准备**：用任意反向代理 / 隧道把收集器套上 HTTPS，再在客户端里加这个远程连接器。
+- claude.ai **只认 HTTPS** —— 纯 `http://IP:端口` 不行，所以必须走反代上 HTTPS。
+- 该端点**默认不鉴权**（它暴露的是你自己的活动数据）。要么只放在你自己能访问的地方，要么设 `MCP_HTTP_TOKEN`，强制带 `Authorization: Bearer <token>`。想彻底关掉就设 `MCP_HTTP_ENABLED=false`。
+
+暴露的工具（两种传输方式一致）：
 
 | 工具 | 回答什么 |
 |---|---|
@@ -201,7 +217,7 @@ iOS 没有后台 agent，靠 **快捷指令** app 里两个**个人自动化**�
 | `GET /api/devices/timeline-query?date=&deviceId=&limit=` | 活动列表 |
 | `GET /api/devices/activity-summary?date=&deviceId=` | 每个应用的时长汇总 |
 | `GET /api/app-labels` | 原始的 appId → {name, desc} 映射 |
-| `POST /api/devices/report` | **上报入口**（Android/桌面 agent，Bearer token） |
+| `POST /api/devices/report` | **上报入口**（Android/桌面采集端，Bearer token） |
 | `POST /api/devices/ios/app-event` | **上报** iOS 开/关（Bearer token） |
 | `POST /api/devices/ios/snapshot` | **上报** iOS 电量/专注快照（Bearer token） |
 
@@ -230,9 +246,13 @@ iOS 没有后台 agent，靠 **快捷指令** app 里两个**个人自动化**�
 
 SQLite 文件落在 `./data` 卷上。
 
+## 数据保留（自动清理）
+
+活动历史会自动清理，DB 不会无限膨胀。收集器在启动时、以及之后每 24 小时，会删除 `device_activities` 里超过 `RETENTION_DAYS` 天的记录（默认 **60** 天，约两个月）。`device_states`（每台设备一行）不清理。设 `RETENTION_DAYS=0` 可关闭清理、全部保留。
+
 ## 备份
 
-DB 就是 `./data` 卷上的单个文件，最简单的备份就是复制它（运行中想要一致快照，用 `sqlite3 db '.backup ...'` 或 `VACUUM INTO`）。内置的定时备份功能**已规划但尚未实现** —— `src/db/index.ts` 里留了个钩子。
+备份**故意交给你自己**——每个人需求不一样（备到另一台 VPS、推到远程数据库、对象存储等），所以收集器不内置任何备份方案。DB 就是 `./data` 卷上的单个文件，最简单就是复制它；运行中想要一致快照，用 `sqlite3 <db> '.backup <目标>'` 或 `VACUUM INTO <目标>`。
 
 ## 许可证
 

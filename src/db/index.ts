@@ -17,7 +17,3 @@ export function openDatabase(dbPath: string): DatabaseSync {
   }
   return db;
 }
-
-// Backup hook point (reserved, intentionally not implemented in v1):
-// a future scheduled job can call `VACUUM INTO <path>` here to produce a
-// consistent snapshot of the WAL-mode database without stopping the server.

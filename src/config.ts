@@ -44,6 +44,10 @@ export interface AppConfig {
   labelsPath: string;
   corsOrigin: string;
   activityGraceSeconds: number;
+  retentionDays: number;
+  mcpHttpEnabled: boolean;
+  mcpHttpPath: string;
+  mcpHttpToken: string | null;
   deviceTokens: DeviceToken[];
 }
 
@@ -55,6 +59,10 @@ export function loadConfig(): AppConfig {
     labelsPath: process.env.LABELS_PATH ?? "./config/app-labels.json",
     corsOrigin: process.env.CORS_ORIGIN ?? "*",
     activityGraceSeconds: Number(process.env.ACTIVITY_GRACE_SECONDS ?? 120),
+    retentionDays: Number(process.env.RETENTION_DAYS ?? 60),
+    mcpHttpEnabled: (process.env.MCP_HTTP_ENABLED ?? "true").toLowerCase() !== "false",
+    mcpHttpPath: process.env.MCP_HTTP_PATH ?? "/mcp",
+    mcpHttpToken: process.env.MCP_HTTP_TOKEN?.trim() || null,
     deviceTokens: loadDeviceTokens(),
   };
 }

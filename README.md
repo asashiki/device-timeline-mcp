@@ -18,7 +18,7 @@ Single-user, self-hosted, no account system. You run one collector; each of your
 
 ```
 ┌─────────────┐   HTTPS POST /api/devices/report (Bearer token)
-│  agents     │ ───────────────────────────────────────────────┐
+│  reporters  │ ───────────────────────────────────────────────┐
 │ android/ios │                                                 ▼
 │ windows/mac │                                         ┌──────────────────┐
 └─────────────┘                                         │  collector       │
@@ -93,19 +93,19 @@ can filter by `deviceId`, and the console shows them as separate cards.
 
 ---
 
-## Per-platform agent setup
+## Per-platform reporter setup
 
-The agents live in [`agents/`](agents/) — each has its own README with build +
+The reporters live in [`reporters/`](reporters/) — each has its own README with build +
 setup steps:
 
 | platform | source | notes |
 |---|---|---|
-| Android | [`agents/android`](agents/android) | timeline-only Kotlin app (foreground service) |
-| Windows | [`agents/windows`](agents/windows) | .NET tray app, single-file exe |
-| macOS | [`agents/macos`](agents/macos) | Python + launchd daemon |
-| iOS | [`agents/ios`](agents/ios) | Shortcuts automations (no installable app) |
+| Android | [`reporters/android`](reporters/android) | timeline-only Kotlin app (foreground service) |
+| Windows | [`reporters/windows`](reporters/windows) | .NET tray app, single-file exe |
+| macOS | [`reporters/macos`](reporters/macos) | Python + launchd daemon |
+| iOS | [`reporters/ios`](reporters/ios) | Shortcuts automations (no installable app) |
 
-The desktop/Android agents do the same thing: sample the foreground app + window
+The desktop/Android reporters do the same thing: sample the foreground app + window
 title every ~10s and `POST /api/devices/report` with their Bearer token. All you
 configure is the **server URL** and the device **token**.
 
@@ -125,7 +125,7 @@ build, add repo secrets `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`,
 
 ### Android (phone & tablet)
 
-Build the APK from [`agents/android`](agents/android) (Android Studio or
+Build the APK from [`reporters/android`](reporters/android) (Android Studio or
 `./gradlew assembleRelease`), then:
 
 1. Install the APK on the device.
@@ -139,7 +139,7 @@ Build the APK from [`agents/android`](agents/android) (Android Studio or
 
 ### iOS — Shortcuts automations
 
-iOS has no background agent; you drive it with two **Personal Automations** in the
+iOS has no background reporter; you drive it with two **Personal Automations** in the
 **Shortcuts** app plus an hourly snapshot.
 
 **A. "App Opened" automation** (fires when you open any tracked app):
@@ -160,12 +160,12 @@ Because iOS only reports on open/close events (plus an optional hourly Time-of-D
 snapshot), an iOS device is considered "online" for **65 minutes** after its last
 event, not 5.
 
-See [`agents/ios`](agents/ios) for the full Shortcuts walkthrough and the
+See [`reporters/ios`](reporters/ios) for the full Shortcuts walkthrough and the
 `/api/devices/ios/app-event` + `/api/devices/ios/snapshot` body shapes.
 
 ### Windows
 
-1. Drop the agent `.exe` on the machine (single-file, self-contained).
+1. Drop the reporter `.exe` on the machine (single-file, self-contained).
 2. First run → tray icon → **Settings**:
    - **Server URL**: `https://<host>`
    - **Token**: the `windows-pc` token
@@ -177,13 +177,19 @@ See [`agents/ios`](agents/ios) for the full Shortcuts walkthrough and the
 2. Grant **Accessibility** permission to the terminal/app running it
    (System Settings → Privacy & Security → Accessibility) — needed to read window titles.
 3. Edit `config.json` → `serverUrl` + `token` (the `mac-laptop` token).
-4. Install as a launchd agent for auto-start (see `agents/mac/README` after port).
+4. Install as a launchd agent for auto-start (see `reporters/macos` after port).
 
 ---
 
 ## Connect an MCP client
 
-Run the MCP server where your client lives, pointed at the collector:
+There are two ways to connect, depending on whether your AI client runs the MCP
+server locally (stdio) or connects to a remote URL (HTTP).
+
+### A. Local clients — stdio (Claude Desktop, Claude Code)
+
+Run the bundled stdio MCP server where your client lives, pointed at the
+collector:
 
 ```jsonc
 // Claude Desktop: claude_desktop_config.json
@@ -198,7 +204,27 @@ Run the MCP server where your client lives, pointed at the collector:
 }
 ```
 
-Tools exposed:
+### B. Remote clients — HTTP / `/mcp` (claude.ai, web)
+
+The collector also serves a **streamable-HTTP MCP endpoint** at `/mcp` (same
+service, same port — no extra process). Web clients like **claude.ai** can't use
+stdio; they connect to a URL instead. Point your client's custom/remote MCP
+connector at:
+
+```
+https://<your-domain>/mcp
+```
+
+- You bring your own domain: put the collector behind HTTPS (a reverse proxy /
+  tunnel of your choice) and add it as a remote MCP connector in your client.
+- claude.ai requires an **HTTPS** URL — a bare `http://IP:port` won't be
+  accepted, so the reverse proxy is what makes this work.
+- The endpoint is **unauthenticated by default** (it exposes your own activity).
+  Either keep it behind something only you can reach, or set `MCP_HTTP_TOKEN` to
+  require an `Authorization: Bearer <token>` header. Set `MCP_HTTP_ENABLED=false`
+  to turn the endpoint off entirely.
+
+Tools exposed (identical for both transports):
 
 | tool | what it answers |
 |---|---|
@@ -220,7 +246,7 @@ CORS is enabled (`CORS_ORIGIN`, default `*`). All timestamps are **UTC ISO**;
 | `GET /api/devices/timeline-query?date=&deviceId=&limit=` | activity list |
 | `GET /api/devices/activity-summary?date=&deviceId=` | per-app totals |
 | `GET /api/app-labels` | the raw appId → {name, desc} map |
-| `POST /api/devices/report` | **ingest** (Android/desktop agents, Bearer token) |
+| `POST /api/devices/report` | **ingest** (Android/desktop reporters, Bearer token) |
 | `POST /api/devices/ios/app-event` | **ingest** iOS open/close (Bearer token) |
 | `POST /api/devices/ios/snapshot` | **ingest** iOS battery/focus snapshot (Bearer token) |
 
@@ -256,12 +282,22 @@ Two tables (see `src/db/migrations.ts`). Migrations are versioned via
 
 The SQLite file lives on the `./data` volume.
 
+## Retention (auto-cleanup)
+
+Activity history is pruned automatically so the DB doesn't grow forever. The
+collector deletes `device_activities` rows older than `RETENTION_DAYS` (default
+**60**, ~2 months) on startup and once every 24h. `device_states` (one row per
+device) is never pruned. Set `RETENTION_DAYS=0` to disable cleanup and keep
+everything.
+
 ## Backups
 
-The DB is a single file on the `./data` volume, so the simplest backup is
-copying it (ideally `sqlite3 db '.backup ...'` or `VACUUM INTO` for a consistent
-snapshot while running). A built-in scheduled-backup feature is **planned but not
-yet implemented** — there's a reserved hook in `src/db/index.ts`.
+Backups are intentionally left to you — everyone wants something different
+(copy to another VPS, push to a remote database, object storage, etc.), so the
+collector doesn't bake in a backup scheme. The DB is a single file on the
+`./data` volume, so the simplest approach is copying it — ideally with
+`sqlite3 <db> '.backup <dest>'` or `VACUUM INTO <dest>` for a consistent
+snapshot while the server is running.
 
 ## License
 

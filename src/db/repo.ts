@@ -240,6 +240,17 @@ export class Repository {
       );
   }
 
+  // Delete activity rows older than `days` days. device_states is one row per
+  // device (current snapshot) so it's left untouched. Returns rows removed.
+  purgeActivitiesOlderThan(days: number): number {
+    if (!Number.isFinite(days) || days <= 0) return 0;
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    const result = this.db
+      .prepare(`DELETE FROM device_activities WHERE started_at < ?`)
+      .run(cutoff);
+    return Number(result.changes);
+  }
+
   currentStates(): DeviceStateOut[] {
     const rows = this.db
       .prepare(`SELECT * FROM device_states ORDER BY last_seen_at DESC`)

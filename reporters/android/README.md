@@ -1,4 +1,4 @@
-# Android agent
+# Android reporter
 
 A minimal, timeline-only Android app: every ~30s it reads the **foreground app**
 (via Usage Access) + battery/network and `POST`s to your collector's
@@ -10,10 +10,10 @@ boot receiver, tuned for aggressive OEM ROMs (MIUI/HyperOS, vivo/OriginOS, etc.)
 
 ## Build
 
-Open `agents/android` in Android Studio (Giraffe+), or from the CLI:
+Open `reporters/android` in Android Studio (Giraffe+), or from the CLI:
 
 ```bash
-cd agents/android
+cd reporters/android
 gradle wrapper          # one-time: generate the gradle wrapper jar/scripts
 ./gradlew assembleRelease
 # unsigned APK → app/build/outputs/apk/release/

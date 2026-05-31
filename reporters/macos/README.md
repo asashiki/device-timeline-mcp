@@ -1,7 +1,7 @@
-# macOS agent
+# macOS reporter
 
 Samples the foreground app (bundle id + window title) and battery every ~10s and
-`POST`s to the collector's `/api/devices/report`, mirroring the Windows agent so
+`POST`s to the collector's `/api/devices/report`, mirroring the Windows reporter so
 macOS lands in the same `device_states` / `device_activities` tables and is
 covered by the same MCP tools.
 
@@ -14,7 +14,7 @@ covered by the same MCP tools.
 **2. Install Python deps**
 
 ```bash
-cd agents/macos
+cd reporters/macos
 pip3 install -r requirements.txt
 ```
 

@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'agents/android/**'
+      - 'reporters/android/**'
       - '.github/workflows/android-build.yml'
     tags:
       - 'v*'
@@ -37,7 +37,7 @@ jobs:
           KS_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KS_ALIAS: ${{ secrets.KEY_ALIAS }}
           KS_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        working-directory: agents/android
+        working-directory: reporters/android
         run: |
           if [ -n "$KEYSTORE_B64" ]; then
             printf '%s' "$KEYSTORE_B64" | base64 -d > release.jks
@@ -54,7 +54,7 @@ jobs:
 
       - name: Collect APK
         id: apk
-        working-directory: agents/android
+        working-directory: reporters/android
         run: |
           mkdir -p ../../dist
           found=$(find app/build/outputs/apk -name '*.apk' | head -n1)

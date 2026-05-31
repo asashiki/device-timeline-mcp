@@ -1,9 +1,13 @@
-# Agents
+# Reporters
 
-Each device runs a small agent that samples its foreground app and `POST`s to
-the collector with a per-device Bearer token. They all target the same
-`/api/devices/*` ingest API, so every platform lands in the shared tables and is
-covered by the same console / read API / MCP tools.
+Each device runs a small **reporter** that samples its foreground app and
+`POST`s to the collector with a per-device Bearer token. They all target the
+same `/api/devices/*` ingest API, so every platform lands in the shared tables
+and is covered by the same console / read API / MCP tools.
+
+> Naming note: "reporter" = the per-device program that *reports* activity to the
+> collector. It is **not** an "agent" — in this project "agent" is reserved for
+> the LLM side (Claude / GPT) that consumes the MCP tools.
 
 | platform | folder | how it runs |
 |---|---|---|

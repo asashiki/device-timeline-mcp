@@ -1,4 +1,4 @@
-# Windows agent
+# Windows reporter
 
 Samples the foreground window + process every ~10s and `POST`s to the
 collector's `/api/devices/report` with a Bearer token. Lives in the system tray
