@@ -38,6 +38,31 @@ const MIGRATIONS: Array<(db: DatabaseSync) => void> = [
         ON device_activities(started_at DESC);
     `);
   },
+
+  // v2 — Health Connect sync (optional extension). One row per health sample,
+  // pushed by the Android agent's periodic HealthConnect sync. Deduped on
+  // (device_id, type, recorded_at) so re-syncing an overlapping window is idempotent.
+  (db) => {
+    db.exec(`
+      CREATE TABLE device_health (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        device_id   TEXT NOT NULL,
+        type        TEXT NOT NULL,
+        value       REAL,
+        value_json  TEXT,
+        unit        TEXT,
+        source      TEXT,
+        recorded_at TEXT NOT NULL,
+        created_at  TEXT NOT NULL,
+        UNIQUE(device_id, type, recorded_at)
+      );
+
+      CREATE INDEX idx_device_health_dev_type_time
+        ON device_health(device_id, type, recorded_at DESC);
+      CREATE INDEX idx_device_health_recorded
+        ON device_health(recorded_at DESC);
+    `);
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;

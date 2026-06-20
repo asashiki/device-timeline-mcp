@@ -24,6 +24,8 @@ function startRetention(repo: Repository, retentionDays: number): void {
     try {
       const removed = repo.purgeActivitiesOlderThan(retentionDays);
       if (removed > 0) console.log(`[retention] purged ${removed} activity row(s) older than ${retentionDays}d`);
+      const removedHealth = repo.purgeHealthOlderThan(retentionDays);
+      if (removedHealth > 0) console.log(`[retention] purged ${removedHealth} health row(s) older than ${retentionDays}d`);
     } catch (err) {
       console.error("[retention] sweep failed:", err);
     }

@@ -101,6 +101,76 @@ export function registerRoutes(app: FastifyInstance, ctx: RouteContext): void {
     return reply.code(202).send({ ok: true, extra });
   });
 
+  // ── Health Connect ingest (Android agent, Bearer device token) ────────────
+  const healthRecordSchema = z.object({
+    type: z.string().min(1).max(64),
+    value: z.number().nullable().optional(),
+    valueJson: z.record(z.unknown()).nullable().optional(),
+    unit: z.string().max(32).nullable().optional(),
+    source: z.string().max(64).nullable().optional(),
+    recordedAt: z.string().min(1),
+  });
+  const healthBatchSchema = z.object({ records: z.array(healthRecordSchema).max(1000) });
+
+  app.post("/api/devices/health", async (request, reply) => {
+    const device = auth.resolve(request.headers.authorization);
+    if (!device) return reply.code(401).send({ error: "invalid device token" });
+
+    const parsed = healthBatchSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "invalid payload", details: parsed.error.flatten() });
+    }
+    const stored = repo.insertHealth(
+      device.deviceId,
+      parsed.data.records.map((r) => ({
+        type: r.type,
+        value: r.value ?? null,
+        valueJson: r.valueJson ?? null,
+        unit: r.unit ?? null,
+        source: r.source ?? null,
+        recordedAt: toUtcIso(r.recordedAt),
+      })),
+    );
+    return reply.code(202).send({ ok: true, stored });
+  });
+
+  // ── Health read API (public, read-only) ───────────────────────────────────
+  const healthQuery = z.object({
+    deviceId: z.string().optional(),
+    type: z.string().optional(),
+    hours: z.coerce.number().positive().max(24 * 90).optional(),
+    limit: z.coerce.number().int().positive().max(2000).optional(),
+  });
+  const sinceFromHours = (hours?: number): string | undefined =>
+    hours ? new Date(Date.now() - hours * 3600 * 1000).toISOString() : undefined;
+
+  app.get("/api/devices/health/summary", async (request, reply) => {
+    const q = healthQuery.safeParse(request.query);
+    if (!q.success) return reply.code(400).send({ error: "invalid query" });
+    const sinceIso = sinceFromHours(q.data.hours ?? 24);
+    return {
+      sinceIso: sinceIso ?? null,
+      fetchedAt: new Date().toISOString(),
+      metrics: repo.healthSummary({ deviceId: q.data.deviceId, sinceIso }),
+    };
+  });
+
+  app.get("/api/devices/health/records", async (request, reply) => {
+    const q = healthQuery.safeParse(request.query);
+    if (!q.success) return reply.code(400).send({ error: "invalid query" });
+    const sinceIso = sinceFromHours(q.data.hours ?? 24);
+    return {
+      sinceIso: sinceIso ?? null,
+      fetchedAt: new Date().toISOString(),
+      records: repo.healthRecords({
+        deviceId: q.data.deviceId,
+        type: q.data.type,
+        sinceIso,
+        limit: q.data.limit ?? 500,
+      }),
+    };
+  });
+
   // ── Read API (public, read-only — for the console + your own frontends) ───
   app.get("/api/devices/current", async () => {
     const devices = repo.currentStates().map((d) => ({
