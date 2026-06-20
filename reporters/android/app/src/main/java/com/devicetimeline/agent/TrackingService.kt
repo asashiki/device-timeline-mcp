@@ -27,6 +27,8 @@ class TrackingService : Service() {
     private lateinit var settingsStore: SettingsStore
 
     private var trackingJob: Job? = null
+    private var healthSyncJob: Job? = null
+    private var lastHealthSyncAt = 0L
     private var lastSentKey = ""
     private var lastSuccessfulReportAt = 0L
     private var lastNotificationText = ""
@@ -104,6 +106,38 @@ class TrackingService : Service() {
                 }
             }
         }
+
+        startHealthSyncLoop()
+    }
+
+    // Run Health Connect sync from inside the FGS so it inherits the wake lock +
+    // setAlarmClock watchdog. WorkManager's PeriodicWorkRequest gets killed by
+    // MIUI/HyperOS when the app sits in the background for hours; this loop does
+    // not, because the FGS is what keeps the process alive. (HealthSyncWorker
+    // remains as a fallback + the "立即同步" button.)
+    private fun startHealthSyncLoop() {
+        if (healthSyncJob?.isActive == true) return
+        healthSyncJob = serviceScope.launch {
+            delay(INITIAL_HEALTH_SYNC_DELAY_MS)
+            while (isActive) {
+                try {
+                    val settings = settingsStore.load()
+                    val intervalMs = settings.hcSyncIntervalMinutes.coerceAtLeast(15L) * 60_000L
+                    val now = System.currentTimeMillis()
+                    if (settings.hcSyncEnabled && now - lastHealthSyncAt >= intervalMs) {
+                        HealthSyncRunner.runOnce(this@TrackingService)
+                        lastHealthSyncAt = System.currentTimeMillis()
+                    }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (t: Throwable) {
+                    val msg = "健康同步异常：${t.javaClass.simpleName}: ${t.message}"
+                    settingsStore.appendLog(msg)
+                    android.util.Log.e("TrackingService", msg, t)
+                }
+                delay(HEALTH_SYNC_CHECK_INTERVAL_MS)
+            }
+        }
     }
 
     private suspend fun runOneTick() {
@@ -152,6 +186,9 @@ class TrackingService : Service() {
     private fun stopTracking(cancelWatchdog: Boolean = true) {
         trackingJob?.cancel()
         trackingJob = null
+        healthSyncJob?.cancel()
+        healthSyncJob = null
+        lastHealthSyncAt = 0L
         lastSentKey = ""
         lastSuccessfulReportAt = 0L
         lastNotificationText = ""
@@ -269,5 +306,7 @@ class TrackingService : Service() {
         private const val NOTIFICATION_ID = 11031
         private const val DEFAULT_WATCHDOG_DELAY_MS = 120_000L
         private const val FORCE_REPORT_INTERVAL_MS = 50_000L
+        private const val INITIAL_HEALTH_SYNC_DELAY_MS = 20_000L
+        private const val HEALTH_SYNC_CHECK_INTERVAL_MS = 5 * 60_000L
     }
 }

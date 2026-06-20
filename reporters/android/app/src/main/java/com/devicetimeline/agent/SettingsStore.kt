@@ -17,6 +17,9 @@ class SettingsStore(context: Context) {
         reportBattery = prefs.getBoolean(KEY_REPORT_BATTERY, true),
         autoStartOnBoot = prefs.getBoolean(KEY_AUTO_START, false),
         isRunningEnabled = prefs.getBoolean(KEY_RUNNING_ENABLED, false),
+        hcSyncEnabled = prefs.getBoolean(KEY_HC_SYNC_ENABLED, false),
+        hcSyncIntervalMinutes = prefs.getLong(KEY_HC_SYNC_INTERVAL, 60L),
+        hcSyncRangeHours = prefs.getLong(KEY_HC_SYNC_RANGE, 24L),
     )
 
     fun save(settings: AgentSettings) {
@@ -27,6 +30,9 @@ class SettingsStore(context: Context) {
             .putBoolean(KEY_REPORT_BATTERY, settings.reportBattery)
             .putBoolean(KEY_AUTO_START, settings.autoStartOnBoot)
             .putBoolean(KEY_RUNNING_ENABLED, settings.isRunningEnabled)
+            .putBoolean(KEY_HC_SYNC_ENABLED, settings.hcSyncEnabled)
+            .putLong(KEY_HC_SYNC_INTERVAL, settings.hcSyncIntervalMinutes.coerceAtLeast(15L))
+            .putLong(KEY_HC_SYNC_RANGE, settings.hcSyncRangeHours.coerceAtLeast(1L))
             .apply()
     }
 
@@ -84,6 +90,9 @@ class SettingsStore(context: Context) {
         private const val KEY_REPORT_BATTERY = "report_battery"
         private const val KEY_AUTO_START = "auto_start"
         private const val KEY_RUNNING_ENABLED = "running_enabled"
+        private const val KEY_HC_SYNC_ENABLED = "hc_sync_enabled"
+        private const val KEY_HC_SYNC_INTERVAL = "hc_sync_interval_minutes"
+        private const val KEY_HC_SYNC_RANGE = "hc_sync_range_hours"
         private const val KEY_LOGS = "logs"
         private const val MAX_LOG_ITEMS = 240
         private val LOG_TIME_FORMAT =

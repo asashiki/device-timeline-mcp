@@ -7,6 +7,10 @@ data class AgentSettings(
     val reportBattery: Boolean = true,
     val autoStartOnBoot: Boolean = false,
     val isRunningEnabled: Boolean = false,
+    // Optional Health Connect sync extension (opt-in; off by default).
+    val hcSyncEnabled: Boolean = false,
+    val hcSyncIntervalMinutes: Long = 60,
+    val hcSyncRangeHours: Long = 24,
 )
 
 data class ForegroundAppInfo(

@@ -5,6 +5,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URI
 import java.time.Instant
@@ -57,6 +58,34 @@ object ApiReporter {
         } catch (e: Exception) {
             Log.w(TAG, "Request error: ${e.message}")
             false
+        }
+    }
+
+    // Upload a batch of Health Connect samples. Returns null on success, or an
+    // error detail string. Used by the optional health-sync extension.
+    fun postHealthBatch(baseUrl: String, token: String, records: List<JSONObject>): String? {
+        val normalized = normalizeBaseUrl(baseUrl) ?: return "invalid URL: $baseUrl"
+        if (token.isBlank()) return "token is blank"
+        if (records.isEmpty()) return "no records"
+
+        val arr = JSONArray()
+        records.forEach { arr.put(it) }
+        val body = JSONObject().put("records", arr)
+
+        val request = Request.Builder()
+            .url("$normalized/api/devices/health")
+            .addHeader("Authorization", "Bearer $token")
+            .addHeader("User-Agent", "device-timeline-android-agent/1.0.0")
+            .post(body.toString().toRequestBody(jsonMediaType))
+            .build()
+
+        return try {
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) null
+                else "HTTP ${response.code}"
+            }
+        } catch (e: Exception) {
+            e.message ?: e.javaClass.simpleName
         }
     }
 
