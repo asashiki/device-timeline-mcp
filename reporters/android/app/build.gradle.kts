@@ -6,12 +6,12 @@ plugins {
 
 android {
     namespace = "com.devicetimeline.agent"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.devicetimeline.agent"
         minSdk = 28
-        targetSdk = 35
+        targetSdk = 36
         val ciCode = (project.findProperty("versionCode") as String?)?.toIntOrNull() ?: 0
         versionCode = ciCode + 1
         versionName = "1.0.$versionCode"
