@@ -240,7 +240,7 @@ class SettingsForm : Form
     public SettingsForm(AgentConfig config)
     {
         Config = config;
-        Text = "Asashiki Windows Agent 设置";
+        Text = "Hibi 日々 设置";
         Size = new Size(540, 420);
         MinimumSize = new Size(540, 420);
         StartPosition = FormStartPosition.CenterScreen;
@@ -366,7 +366,7 @@ class AgentApplicationContext : ApplicationContext
         _tray = new NotifyIcon
         {
             Icon = LoadAppIcon(),
-            Text = "Asashiki Windows Agent",
+            Text = "Hibi 日々",
             ContextMenuStrip = menu,
             Visible = true
         };

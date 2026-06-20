@@ -214,7 +214,7 @@ class TrackingService : Service() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "设备时间线监听",
+            "Hibi 日々",
             NotificationManager.IMPORTANCE_LOW
         ).apply {
             description = "持续上报前台应用状态到你的收集器"
@@ -232,7 +232,7 @@ class TrackingService : Service() {
         )
         val notif = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_notify_sync)
-            .setContentTitle("设备时间线监听")
+            .setContentTitle("Hibi 日々")
             .setContentText(text)
             .setOngoing(true)
             .setOnlyAlertOnce(true)

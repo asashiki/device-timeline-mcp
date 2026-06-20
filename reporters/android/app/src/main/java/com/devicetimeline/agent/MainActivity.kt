@@ -87,12 +87,12 @@ private fun AgentScreen() {
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("设备时间线 Agent", style = MaterialTheme.typography.headlineSmall)
+        Text("Hibi 日々", style = MaterialTheme.typography.headlineSmall)
 
         OutlinedTextField(
             value = serverUrl,
             onValueChange = { serverUrl = it },
-            label = { Text("Server URL (https://host 或 http://host:4200)") },
+            label = { Text("Server URL (例 https://link.asashiki.com)") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
