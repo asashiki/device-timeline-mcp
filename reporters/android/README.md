@@ -38,7 +38,7 @@ Optional signing for a stable update key (so reinstalls don't uninstall first):
 3. Tap **关闭电池优化 / Disable battery optimization** so it keeps reporting in
    the background.
 4. Fill in:
-   - **Server URL**: `https://<your-host>` (or `http://host:4200` on LAN)
+   - **Server URL**: `https://<your-host>` (or `http://host:4823` on LAN)
    - **Device Token**: the token you minted for this device
 5. Toggle **开机自启 / Start on boot** if you want it to survive reboots, then
    tap **启动 / Start**.

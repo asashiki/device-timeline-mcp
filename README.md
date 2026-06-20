@@ -49,8 +49,8 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-Open `http://<host>:4200/console` — you should see your devices appear as they
-start reporting. Health check: `curl http://<host>:4200/health`.
+Open `http://<host>:4823/console` — you should see your devices appear as they
+start reporting. Health check: `curl http://<host>:4823/health`.
 
 ### Without Docker (Node ≥ 22.5)
 
@@ -118,7 +118,7 @@ Build the APK from [`reporters/android`](reporters/android) (Android Studio or
 2. Open it once → grant **Usage Access** (设置 → 应用 → 特殊权限 → 使用情况访问) and
    disable battery optimization for it (so it keeps reporting in the background).
 3. In the app's settings, set:
-   - **Server URL**: `https://<your-host>` (or `http://host:4200` on LAN)
+   - **Server URL**: `https://<your-host>` (or `http://host:4823` on LAN)
    - **Token**: the token for this device
 4. For a **phone + tablet**, install on both, and paste the **phone token** on the
    phone and the **tablet token** on the tablet. That's the whole distinction.

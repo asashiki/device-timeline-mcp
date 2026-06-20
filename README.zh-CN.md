@@ -47,7 +47,7 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-打开 `http://<host>:4200/console` —— 设备开始上报后就会一台台出现。健康检查：`curl http://<host>:4200/health`。
+打开 `http://<host>:4823/console` —— 设备开始上报后就会一台台出现。健康检查：`curl http://<host>:4823/health`。
 
 ### 不用 Docker（Node ≥ 22.5）
 
@@ -111,7 +111,7 @@ npm run build && npm start      # 或：npm run dev
 1. 把 APK 装到设备上。
 2. 打开一次 → 授予**使用情况访问**权限（设置 → 应用 → 特殊权限 → 使用情况访问），并为它**关闭电池优化**（让它后台一直上报）。
 3. 在 app 设置里填：
-   - **服务器地址**：`https://<your-host>`（或局域网 `http://host:4200`）
+   - **服务器地址**：`https://<your-host>`（或局域网 `http://host:4823`）
    - **Token**：这台设备的 token
 4. **手机 + 平板**的话，两台都装，手机填**手机的 token**、平板填**平板的 token**。区别就这一点。
 
