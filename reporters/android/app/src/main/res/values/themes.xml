@@ -1,3 +1,7 @@
 <resources>
-    <style name="Theme.DeviceTimelineAgent" parent="Theme.Material3.DayNight.NoActionBar" />
+    <style name="Theme.DeviceTimelineAgent" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:windowBackground">@color/hibi_bg</item>
+        <item name="android:statusBarColor">@color/hibi_bg</item>
+        <item name="android:navigationBarColor">@color/hibi_bg</item>
+    </style>
 </resources>

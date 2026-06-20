@@ -23,6 +23,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -53,6 +55,23 @@ import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
 import androidx.health.connect.client.records.WeightRecord
 import kotlinx.coroutines.launch
+
+// Asashiki "Ink Night" palette — keeps the agent visually in the same system as
+// the dashboard and console.
+private val HibiColors = darkColorScheme(
+    background = Color(0xFF0B0D14),
+    surface = Color(0xFF1A1D27),
+    surfaceVariant = Color(0xFF22252F),
+    primary = Color(0xFFD89870),
+    onPrimary = Color(0xFF0B0D14),
+    secondary = Color(0xFF7FA8B5),
+    onSecondary = Color(0xFF0B0D14),
+    onBackground = Color(0xFFE8E2D4),
+    onSurface = Color(0xFFE8E2D4),
+    onSurfaceVariant = Color(0xFF8C8E96),
+    error = Color(0xFFC97064),
+    outline = Color(0x26E8E2D4),
+)
 
 class MainActivity : ComponentActivity() {
 
@@ -87,7 +106,7 @@ class MainActivity : ComponentActivity() {
                 .launch(Manifest.permission.POST_NOTIFICATIONS)
         }
         setContent {
-            MaterialTheme {
+            MaterialTheme(colorScheme = HibiColors) {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     AgentScreen(
                         hcGranted = hcGrantedState.value,

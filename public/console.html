@@ -5,34 +5,54 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Hibi 日々 · Console</title>
 <style>
-  :root { color-scheme: dark; }
+  :root {
+    color-scheme: dark;
+    --bg: #0B0D14; --elev: #14161F; --card: #1A1D27; --card-hi: #22252F;
+    --border: rgba(232,226,212,.08); --border-hi: rgba(232,226,212,.15);
+    --text: #E8E2D4; --dim: #8C8E96; --faint: #565862;
+    --warm: #D89870; --cool: #7FA8B5; --red: #C97064; --green: #85B58E;
+  }
   * { box-sizing: border-box; }
-  body { margin: 0; padding: 24px; font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: #0e1116; color: #e6edf3; }
-  h1 { font-size: 18px; margin: 0 0 4px; }
-  h2 { font-size: 14px; margin: 24px 0 10px; color: #8b949e; font-weight: 600; }
-  .bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
-  input { background: #161b22; border: 1px solid #30363d; color: #e6edf3; border-radius: 6px; padding: 6px 10px; min-width: 240px; }
-  button { background: #238636; border: 0; color: #fff; border-radius: 6px; padding: 6px 14px; cursor: pointer; }
-  button:hover { background: #2ea043; }
-  .muted { color: #8b949e; font-size: 12px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
-  .card { background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 14px; }
+  body { margin: 0; padding: 28px 24px 64px; background: var(--bg); color: var(--text);
+    font: 14px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif; }
+  .eyebrow { font-size: 11px; letter-spacing: .28em; text-transform: uppercase; color: var(--warm); margin: 0 0 6px; }
+  h1 { font-size: 22px; margin: 0 0 2px; font-weight: 650; letter-spacing: .01em; }
+  h2 { font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: var(--dim);
+    font-weight: 600; margin: 30px 0 12px; }
+  .lede { color: var(--faint); font-size: 12.5px; margin: 0 0 16px; }
+  .bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; }
+  input { background: var(--elev); border: 1px solid var(--border-hi); color: var(--text);
+    border-radius: 8px; padding: 7px 11px; min-width: 240px; }
+  input::placeholder { color: var(--faint); }
+  button { background: transparent; border: 1px solid var(--border-hi); color: var(--text);
+    border-radius: 8px; padding: 7px 16px; cursor: pointer; transition: border-color .15s, background .15s; }
+  button:hover { border-color: var(--warm); color: var(--warm); }
+  .muted { color: var(--dim); font-size: 12px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 15px; }
   .card .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-  .name { font-weight: 600; } .plat { font-size: 11px; color: #8b949e; text-transform: uppercase; }
+  .name { font-weight: 600; } .plat { font-size: 10px; letter-spacing: .12em; color: var(--faint); text-transform: uppercase; }
   .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
-  .on { background: #3fb950; } .off { background: #6e7681; }
-  .live { margin: 8px 0 4px; } .meta { font-size: 12px; color: #8b949e; }
+  .on { background: var(--green); box-shadow: 0 0 7px var(--green); } .off { background: var(--faint); }
+  .live { margin: 10px 0 5px; } .meta { font-size: 12px; color: var(--dim); }
+  /* health metric cards */
+  .hcard { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+  .hcard .hl { font-size: 11px; letter-spacing: .1em; color: var(--cool); text-transform: uppercase; }
+  .hcard .hv { font-size: 24px; font-weight: 650; margin-top: 4px; }
+  .hcard .hu { font-size: 12px; color: var(--dim); font-weight: 400; margin-left: 3px; }
+  .hcard .hm { font-size: 11px; color: var(--faint); margin-top: 5px; }
   table { width: 100%; border-collapse: collapse; }
-  td, th { text-align: left; padding: 6px 8px; border-bottom: 1px solid #21262d; font-size: 13px; }
-  th { color: #8b949e; font-weight: 600; }
-  .tl { font-size: 13px; padding: 4px 0; border-bottom: 1px solid #21262d; }
-  .tl .t { color: #58a6ff; }
-  .err { color: #f85149; } .empty { color: #8b949e; font-style: italic; }
+  td, th { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--border); font-size: 13px; }
+  th { color: var(--dim); font-weight: 600; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+  .tl { font-size: 13px; padding: 5px 0; border-bottom: 1px solid var(--border); }
+  .tl .t { color: var(--cool); }
+  .err { color: var(--red); } .empty { color: var(--faint); font-style: italic; }
 </style>
 </head>
 <body>
+  <p class="eyebrow">Hibi · device timeline</p>
   <h1>Hibi 日々</h1>
-  <div class="muted">纯前端测试页 · 直连本服务只读接口 · 时间按设备时区展示</div>
+  <div class="lede">只读看板 · 直连本服务公开接口 · 时间按设备时区展示</div>
   <div class="bar">
     <input id="base" placeholder="API base（留空=同源）" />
     <button id="refresh">刷新</button>
@@ -41,7 +61,9 @@
 
   <h2>当前设备状态</h2>
   <div id="devices" class="grid"></div>
-  <h2>今日时间线（最近 50 条）</h2>
+  <h2>健康数据 · 近 24 小时</h2>
+  <div id="health" class="grid"></div>
+  <h2>今日时间线 · 最近 50 条</h2>
   <div id="timeline"></div>
   <h2>今日应用统计</h2>
   <div id="summary"></div>
@@ -66,6 +88,26 @@ function renderDevices(data){
       <div class="meta"><span class="dot ${d.isOnline?"on":"off"}"></span>${d.isOnline?"在线":"离线"} · ${ago(d.lastSeenAt)}${batt}${net}</div></div>`;
   }).join("") : '<div class="empty">无设备数据</div>';
 }
+
+const HLABEL={heart_rate:"心率",steps:"步数",sleep:"睡眠",total_calories:"消耗热量",oxygen_saturation:"血氧",distance:"距离",exercise:"运动",blood_pressure:"血压",body_temperature:"体温",respiratory_rate:"呼吸率",blood_glucose:"血糖",weight:"体重",height:"身高"};
+const HUNIT={bpm:"bpm",count:"步",minutes:"分钟",kcal:"kcal",percent:"%",meters:"m",mmHg:"mmHg",celsius:"℃",breaths_per_min:"/min",mmol_per_l:"mmol/L",kg:"kg"};
+const HCUM=new Set(["steps","distance","total_calories","exercise","sleep"]);
+const ORDER=["heart_rate","steps","sleep","oxygen_saturation","total_calories","distance","exercise","blood_pressure","weight","body_temperature","respiratory_rate","blood_glucose","height"];
+function hround(n){return n==null?"—":(Math.round(n*100)/100);}
+function renderHealth(data){
+  const ms=((data&&data.metrics)||[]).slice().sort((a,b)=>ORDER.indexOf(a.type)-ORDER.indexOf(b.type));
+  $("health").innerHTML = ms.length ? ms.map((m)=>{
+    const unit=HUNIT[m.unit]||m.unit||"";
+    let main, sub;
+    if(HCUM.has(m.type)){ main=hround(m.sum); sub=`合计 · ${m.count} 条`; }
+    else if(m.latest&&m.latest.valueJson){ main=Object.values(m.latest.valueJson).join("/"); sub=`最新 · 均 ${hround(m.avg)}`; }
+    else { main=hround(m.latest?m.latest.value:null); sub=`最新 · ${hround(m.min)}–${hround(m.max)}`; }
+    return `<div class="hcard"><div class="hl">${esc(HLABEL[m.type]||m.type)}</div>
+      <div class="hv">${esc(String(main))}<span class="hu">${esc(unit)}</span></div>
+      <div class="hm">${esc(sub)}</div></div>`;
+  }).join("") : '<div class="empty">暂无健康数据（在 App 内开启「健康同步」扩展后出现）</div>';
+}
+
 function renderTimeline(data){
   const acts=((data&&data.activities)||[]).slice(-50).reverse();
   $("timeline").innerHTML = acts.length ? acts.map((a)=>
@@ -82,7 +124,12 @@ function renderSummary(data){
 async function load(){
   const base=$("base").value.replace(/\/$/,"");
   $("status").textContent="加载中…";
-  const sections=[["devices","/api/devices/current",renderDevices],["timeline","/api/devices/timeline-query?limit=200",renderTimeline],["summary","/api/devices/activity-summary",renderSummary]];
+  const sections=[
+    ["devices","/api/devices/current",renderDevices],
+    ["health","/api/devices/health/summary?hours=24",renderHealth],
+    ["timeline","/api/devices/timeline-query?limit=200",renderTimeline],
+    ["summary","/api/devices/activity-summary",renderSummary],
+  ];
   await Promise.all(sections.map(async([id,path,render])=>{
     try{render(await getJson(base,path));}catch(err){$(id).innerHTML=`<div class="err">加载失败：${esc(err.message)}</div>`;}
   }));
