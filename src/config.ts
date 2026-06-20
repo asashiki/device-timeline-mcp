@@ -53,7 +53,7 @@ export interface AppConfig {
 
 export function loadConfig(): AppConfig {
   return {
-    port: Number(process.env.PORT ?? 4200),
+    port: Number(process.env.PORT ?? 4823),
     host: process.env.HOST ?? "0.0.0.0",
     dbPath: process.env.DB_PATH ?? "./data/device-timeline.sqlite",
     labelsPath: process.env.LABELS_PATH ?? "./config/app-labels.json",

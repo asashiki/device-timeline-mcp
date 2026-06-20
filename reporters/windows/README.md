@@ -17,7 +17,7 @@ dotnet publish -c Release
 
 First run drops a tray icon. Right-click → **设置 / Settings**:
 
-- **Server URL**: `https://<your-host>` (or `http://host:4200` on LAN)
+- **Server URL**: `https://<your-host>` (or `http://host:4823` on LAN)
 - **Device Token**: the token you minted for this PC (`windows-pc` in the
   collector's `DEVICE_TOKENS_JSON`)
 - **设备显示名 / Device name**: free-form label

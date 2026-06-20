@@ -8,7 +8,11 @@ services:
       DB_PATH: /data/device-timeline.sqlite
       LABELS_PATH: /app/config/app-labels.json
     ports:
-      - "${PORT:-4200}:4200"
+      # Host bind + host port are decoupled from the in-container app port so the
+      # collector can sit behind a reverse proxy on the docker bridge without
+      # clashing with other services. The right-hand side must match PORT (what
+      # the app actually listens on), not a hard-coded 4823.
+      - "${BIND_HOST:-127.0.0.1}:${HOST_PORT:-${PORT:-4823}}:${PORT:-4823}"
     volumes:
       # SQLite database survives container rebuilds (back it up yourself; see README).
       - ./data:/data

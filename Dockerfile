@@ -22,5 +22,5 @@ COPY public ./public
 COPY config ./config
 ENV LABELS_PATH=/app/config/app-labels.json
 ENV DB_PATH=/data/device-timeline.sqlite
-EXPOSE 4200
+EXPOSE 4823
 CMD ["node", "dist/server.js"]
