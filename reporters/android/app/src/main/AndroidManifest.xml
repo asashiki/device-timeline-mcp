@@ -49,12 +49,53 @@
 
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true" />
+
+        <!-- Dynamic launcher icon (Duolingo-style): exactly one of these aliases is
+             enabled at a time. Default = healthy (smile); the agent switches to pout
+             then cry when it has been unable to report for hours. Toggled at runtime
+             via PackageManager.setComponentEnabledSetting(..., DONT_KILL_APP).
+             Note: a truly force-stopped app can't run code to change its own icon —
+             this only covers "service alive but not reporting". -->
+        <activity-alias
+            android:name=".LauncherDefault"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:roundIcon="@mipmap/ic_launcher_round"
+            android:label="@string/app_name"
+            android:targetActivity=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity>
+        </activity-alias>
+        <activity-alias
+            android:name=".LauncherPout"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_pout"
+            android:roundIcon="@mipmap/ic_launcher_pout_round"
+            android:label="@string/app_name"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".LauncherCry"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_cry"
+            android:roundIcon="@mipmap/ic_launcher_cry_round"
+            android:label="@string/app_name"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
 
         <!-- Required by Health Connect: lets the app appear in HC's permission
              management list and show a rationale when the user taps it. -->

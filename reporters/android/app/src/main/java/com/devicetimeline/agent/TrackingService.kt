@@ -29,6 +29,8 @@ class TrackingService : Service() {
     private var trackingJob: Job? = null
     private var healthSyncJob: Job? = null
     private var lastHealthSyncAt = 0L
+    private var serviceStartedAt = 0L
+    private var lastIconState: AppIconManager.IconState? = null
     private var lastSentKey = ""
     private var lastSuccessfulReportAt = 0L
     private var lastNotificationText = ""
@@ -37,6 +39,7 @@ class TrackingService : Service() {
     override fun onCreate() {
         super.onCreate()
         settingsStore = SettingsStore(this)
+        serviceStartedAt = System.currentTimeMillis()
         createNotificationChannel()
         settingsStore.appendLog("服务已创建")
     }
@@ -48,6 +51,8 @@ class TrackingService : Service() {
                 settingsStore.appendLog("收到停止指令")
                 WatchdogWorker.cancel(applicationContext)
                 stopTracking()
+                lastIconState = AppIconManager.IconState.HEALTHY
+                runCatching { AppIconManager.apply(applicationContext, AppIconManager.IconState.HEALTHY) }
                 return START_NOT_STICKY
             }
             ACTION_START, null -> {
@@ -143,6 +148,7 @@ class TrackingService : Service() {
     private suspend fun runOneTick() {
         val settings = settingsStore.load()
         scheduleWatchdog(calculateWatchdogDelay(settings))
+        evaluateAppIcon()
 
         if (!settings.isRunningEnabled) {
             setServiceState("等待启动", "等待用户启动监听")
@@ -181,6 +187,23 @@ class TrackingService : Service() {
         }
 
         delay(settings.heartbeatSeconds * 1_000L)
+    }
+
+    // Duolingo-style icon: escalate from healthy → pout → cry the longer we go
+    // without a successful report. Reference point is the last success, or the
+    // service start time on a fresh (re)start so we don't show "cry" immediately.
+    private fun evaluateAppIcon() {
+        val ref = if (lastSuccessfulReportAt > 0) lastSuccessfulReportAt else serviceStartedAt
+        val elapsed = System.currentTimeMillis() - ref
+        val state = when {
+            elapsed >= ICON_GONE_MS -> AppIconManager.IconState.GONE
+            elapsed >= ICON_STALE_MS -> AppIconManager.IconState.STALE
+            else -> AppIconManager.IconState.HEALTHY
+        }
+        if (state != lastIconState) {
+            lastIconState = state
+            runCatching { AppIconManager.apply(applicationContext, state) }
+        }
     }
 
     private fun stopTracking(cancelWatchdog: Boolean = true) {
@@ -308,5 +331,8 @@ class TrackingService : Service() {
         private const val FORCE_REPORT_INTERVAL_MS = 50_000L
         private const val INITIAL_HEALTH_SYNC_DELAY_MS = 20_000L
         private const val HEALTH_SYNC_CHECK_INTERVAL_MS = 5 * 60_000L
+        // Dynamic icon escalation thresholds (time since last successful report).
+        private const val ICON_STALE_MS = 3 * 60 * 60_000L   // 3h → pout
+        private const val ICON_GONE_MS = 12 * 60 * 60_000L   // 12h → cry
     }
 }

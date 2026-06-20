@@ -10,9 +10,8 @@
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <!-- Brand the tray/exe icon. Uncomment once reporters/windows/icon.ico exists.
+    <!-- Brand the tray/exe icon (generated from the shared app art). -->
     <ApplicationIcon>icon.ico</ApplicationIcon>
-    -->
   </PropertyGroup>
 
   <ItemGroup>
