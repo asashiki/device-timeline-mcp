@@ -10,6 +10,10 @@ on:
       - 'v*'
   workflow_dispatch:
 
+# Needed for softprops/action-gh-release to create/update the GitHub Release on tags.
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
