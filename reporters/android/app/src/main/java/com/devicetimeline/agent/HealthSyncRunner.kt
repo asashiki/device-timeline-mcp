@@ -13,6 +13,53 @@ object HealthSyncRunner {
 
     enum class Outcome { OK, EMPTY, SKIPPED, RETRY, FAILURE }
 
+    // Foreground "立即同步" path: runs the full flow and returns a human-readable
+    // diagnosis of exactly where it stops, so the user can see why no data is
+    // arriving (HC unavailable / no permission / no data in window / upload error).
+    suspend fun diagnoseAndSync(context: Context): String {
+        val store = SettingsStore(context)
+        val settings = store.load()
+        val baseUrl = settings.serverUrl.trim().trimEnd('/')
+        val token = settings.token.trim()
+        if (baseUrl.isBlank() || token.isBlank()) return "未填写服务器地址或 Token"
+
+        val sdkStatus = HealthConnectClient.getSdkStatus(context)
+        if (sdkStatus != HealthConnectClient.SDK_AVAILABLE) {
+            return "Health Connect 不可用（状态码 $sdkStatus）。本机需安装/启用 Google「Health Connect」。"
+        }
+
+        val granted = try {
+            HealthConnectClient.getOrCreate(context).permissionController.getGrantedPermissions()
+        } catch (e: Exception) {
+            return "读取权限失败：${e.javaClass.simpleName}: ${e.message}"
+        }
+
+        return try {
+            val reader = HealthConnectReader(context)
+            val to = Instant.now()
+            val from = to.minusSeconds(settings.hcSyncRangeHours * 3600L)
+            val records = snapshotToRecords(reader.readSnapshot(from, to))
+
+            if (granted.isEmpty()) {
+                "已授权 0 项健康权限——请在 Health Connect 里给本应用勾选要读取的数据类型。"
+            } else if (records.isEmpty()) {
+                "已授权 ${granted.size} 项，但近 ${settings.hcSyncRangeHours}h 在 Health Connect 中读到 0 条数据。" +
+                    "请确认 Health Connect 里确实有数据，且数据源 App（如小米运动健康 / 华为运动健康 / 三星 Health）已开启「写入 Health Connect」。"
+            } else {
+                var uploaded = 0
+                for (batch in records.chunked(BATCH_SIZE)) {
+                    val err = ApiReporter.postHealthBatch(baseUrl, token, batch)
+                    if (err != null) return "读到 ${records.size} 条，但上传失败：$err"
+                    uploaded += batch.size
+                }
+                store.appendLog("HC: 上传 $uploaded 条记录")
+                "成功 ✅ 已授权 ${granted.size} 项，上传 $uploaded 条健康记录。"
+            }
+        } catch (e: Exception) {
+            "读取/上传异常：${e.javaClass.simpleName}: ${e.message}"
+        }
+    }
+
     suspend fun runOnce(context: Context): Outcome {
         val store = SettingsStore(context)
         val settings = store.load()

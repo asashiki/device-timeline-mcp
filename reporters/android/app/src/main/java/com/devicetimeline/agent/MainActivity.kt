@@ -39,6 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -67,7 +68,9 @@ import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
 import androidx.health.connect.client.records.WeightRecord
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 // Asashiki "Ink Night" palette — keeps the agent in the same visual system as
 // the dashboard and console.
@@ -233,6 +236,7 @@ private fun AgentScreen(
     onRequestHc: () -> Unit,
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val store = remember { SettingsStore(context) }
     val initial = remember { store.load() }
 
@@ -374,8 +378,11 @@ private fun AgentScreen(
                         }
                     }
                     OutlinedButton(
-                        onClick = { HealthSyncScheduler.runNow(context); status = "已触发立即同步" },
-                        enabled = hcStatus == HcStatus.AVAILABLE && hcGranted && configured,
+                        onClick = {
+                            status = "正在同步…"
+                            scope.launch { status = withContext(Dispatchers.IO) { HealthSyncRunner.diagnoseAndSync(context) } }
+                        },
+                        enabled = configured,
                         modifier = Modifier.weight(1f),
                     ) { Text("立即同步") }
                 }
