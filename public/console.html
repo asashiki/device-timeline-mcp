@@ -78,7 +78,7 @@
   <h2>当前设备状态</h2>
   <div id="devices" class="grid"></div>
 
-  <h2>健康数据 · 近 24 小时</h2>
+  <h2>健康数据 · 近 7 天</h2>
   <div id="health" class="grid"></div>
 
   <h2>活动时间线 · 今日</h2>
@@ -172,7 +172,7 @@ async function load(){
   $("status").textContent="加载中…";
   await Promise.all([
     getJson(baseUrl(),"/api/devices/current").then(renderDevices).catch(e=>{$("devices").innerHTML=`<div class="err">加载失败：${esc(e.message)}</div>`;}),
-    getJson(baseUrl(),"/api/devices/health/summary?hours=24").then(renderHealth).catch(e=>{$("health").innerHTML=`<div class="err">加载失败：${esc(e.message)}</div>`;}),
+    getJson(baseUrl(),"/api/devices/health/summary?hours=168").then(renderHealth).catch(e=>{$("health").innerHTML=`<div class="err">加载失败：${esc(e.message)}</div>`;}),
     loadTimeline(),
   ]);
   $("status").textContent="更新于 "+hm(new Date().toISOString());
