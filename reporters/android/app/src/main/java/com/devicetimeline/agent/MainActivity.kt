@@ -169,11 +169,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun refreshHealth() {
-        val status = when (HealthConnectClient.getSdkStatus(this)) {
-            HealthConnectClient.SDK_AVAILABLE -> HcStatus.AVAILABLE
-            HealthConnectClient.SDK_AVAILABLE_PROVIDER_UPDATE_REQUIRED -> HcStatus.NEEDS_UPDATE
-            else -> HcStatus.UNAVAILABLE
-        }
+        val status = if (HealthConnectClient.getSdkStatus(this) == HealthConnectClient.SDK_AVAILABLE)
+            HcStatus.AVAILABLE else HcStatus.UNAVAILABLE
         hcStatus.value = status
         if (status != HcStatus.AVAILABLE) { hcGranted.value = false; return }
         lifecycleScope.launch {
