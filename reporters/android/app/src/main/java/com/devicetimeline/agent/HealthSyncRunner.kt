@@ -13,6 +13,10 @@ object HealthSyncRunner {
 
     enum class Outcome { OK, EMPTY, SKIPPED, RETRY, FAILURE }
 
+    private suspend fun grantedCount(context: Context): Int = try {
+        HealthConnectClient.getOrCreate(context).permissionController.getGrantedPermissions().size
+    } catch (_: Exception) { -1 }
+
     // Foreground "立即同步" path: runs the full flow and returns a human-readable
     // diagnosis of exactly where it stops, so the user can see why no data is
     // arriving (HC unavailable / no permission / no data in window / upload error).
@@ -37,14 +41,23 @@ object HealthSyncRunner {
         return try {
             val reader = HealthConnectReader(context)
             val to = Instant.now()
-            val from = to.minusSeconds(settings.hcSyncRangeHours * 3600L)
-            val records = snapshotToRecords(reader.readSnapshot(from, to))
+            var records = snapshotToRecords(
+                reader.readSnapshot(to.minusSeconds(settings.hcSyncRangeHours * 3600L), to)
+            )
+            var widened = false
+            // If the normal window is empty, fall back to a 30-day read so a phone
+            // whose health data is sparse/older still syncs (and so we can tell
+            // "HC empty" apart from "nothing recent").
+            if (records.isEmpty()) {
+                records = snapshotToRecords(reader.readSnapshot(to.minusSeconds(30L * 24 * 3600), to))
+                widened = records.isNotEmpty()
+            }
 
-            if (granted.isEmpty()) {
-                "已授权 0 项健康权限——请在 Health Connect 里给本应用勾选要读取的数据类型。"
+            if (granted.isEmpty() && records.isEmpty()) {
+                "已授权 0 项健康权限——请在 Health Connect 里给「Hibi 日々」勾选要读取的数据类型。"
             } else if (records.isEmpty()) {
-                "已授权 ${granted.size} 项，但近 ${settings.hcSyncRangeHours}h 在 Health Connect 中读到 0 条数据。" +
-                    "请确认 Health Connect 里确实有数据，且数据源 App（如小米运动健康 / 华为运动健康 / 三星 Health）已开启「写入 Health Connect」。"
+                "已授权 ${granted.size} 项，但 Health Connect 近 30 天对这些类型都没有数据。" +
+                    "需要数据源 App（小米运动健康 / 华为运动健康 / 三星 Health / Google Fit 等）开启「连接 / 写入 Health Connect」，HC 里才会有数据可读。"
             } else {
                 var uploaded = 0
                 for (batch in records.chunked(BATCH_SIZE)) {
@@ -53,7 +66,8 @@ object HealthSyncRunner {
                     uploaded += batch.size
                 }
                 store.appendLog("HC: 上传 $uploaded 条记录")
-                "成功 ✅ 已授权 ${granted.size} 项，上传 $uploaded 条健康记录。"
+                "成功 ✅ 已授权 ${granted.size} 项，上传 $uploaded 条健康记录" +
+                    (if (widened) "（用了近 30 天窗口）" else "") + "。"
             }
         } catch (e: Exception) {
             "读取/上传异常：${e.javaClass.simpleName}: ${e.message}"
@@ -85,13 +99,23 @@ object HealthSyncRunner {
         return try {
             val reader = HealthConnectReader(context)
             val to = Instant.now()
-            val from = to.minusSeconds(settings.hcSyncRangeHours * 3600L)
-            val snapshot = reader.readSnapshot(from, to)
-            val records = snapshotToRecords(snapshot)
+            var records = snapshotToRecords(
+                reader.readSnapshot(to.minusSeconds(settings.hcSyncRangeHours * 3600L), to)
+            )
+            // Fall back to a 30-day window so sparse/older data still syncs.
+            if (records.isEmpty()) {
+                records = snapshotToRecords(reader.readSnapshot(to.minusSeconds(30L * 24 * 3600), to))
+            }
 
             if (records.isEmpty()) {
-                Log.i(TAG, "No health records to sync")
-                store.appendLog("HC: 无数据")
+                // Distinguish "no permission" from "permission OK but no samples":
+                // both otherwise read back as empty and look identical in the log.
+                val granted = grantedCount(context)
+                Log.i(TAG, "No health records (granted=$granted)")
+                store.appendLog(
+                    if (granted <= 0) "HC: 未授权（已授权 0 项，去 Health Connect 给本应用勾选权限）"
+                    else "HC: 无数据（已授权 $granted 项，近 30 天无样本，检查数据源是否写入 HC）"
+                )
                 return Outcome.EMPTY
             }
 
