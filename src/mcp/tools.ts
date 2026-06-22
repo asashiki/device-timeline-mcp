@@ -126,15 +126,15 @@ export function createMcpServer(apiBase: string): McpServer {
 
   server.tool(
     "health_summary",
-    "Health Connect summary over a recent window (default 7 days): per-metric totals or latest readings " +
+    "Health Connect summary over a recent window (default 24h): per-metric totals or latest readings " +
       "(heart rate, steps, sleep, calories, SpO2, blood pressure, weight, etc.). Synced from the user's phone.",
     {
-      hours: z.number().positive().max(24 * 90).optional().describe("Look-back window in hours (default 168 = 7 days)"),
+      hours: z.number().positive().max(24 * 90).optional().describe("Look-back window in hours (default 24)"),
       deviceId: z.string().optional(),
     },
     async ({ hours, deviceId }) => {
       const qs = new URLSearchParams();
-      qs.set("hours", String(hours ?? 168));
+      qs.set("hours", String(hours ?? 24));
       if (deviceId) qs.set("deviceId", deviceId);
       const data = await api<HealthSummary>(`/api/devices/health/summary?${qs}`);
       if (!data.metrics.length) return text("No health data synced for this window.");
@@ -148,32 +148,32 @@ export function createMcpServer(apiBase: string): McpServer {
         }
         return `- ${m.type}: latest ${round(m.latest.value)}${unit} · avg ${round(m.avg)} · range ${round(m.min)}–${round(m.max)} (${m.count})`;
       });
-      return text(`Health (last ${hours ?? 168}h):\n${lines.join("\n")}`);
+      return text(`Health (last ${hours ?? 24}h):\n${lines.join("\n")}`);
     },
   );
 
   server.tool(
     "health_records",
-    "Raw Health Connect samples of one metric type over a recent window (default 7 days), newest first.",
+    "Raw Health Connect samples of one metric type over a recent window (default 24h), newest first.",
     {
       type: z.string().describe("Metric type, e.g. heart_rate, steps, sleep, oxygen_saturation, blood_pressure, weight"),
-      hours: z.number().positive().max(24 * 90).optional().describe("Look-back window in hours (default 168 = 7 days)"),
+      hours: z.number().positive().max(24 * 90).optional().describe("Look-back window in hours (default 24)"),
       deviceId: z.string().optional(),
       limit: z.number().int().positive().max(500).optional(),
     },
     async ({ type, hours, deviceId, limit }) => {
       const qs = new URLSearchParams();
       qs.set("type", type);
-      qs.set("hours", String(hours ?? 168));
+      qs.set("hours", String(hours ?? 24));
       qs.set("limit", String(limit ?? 100));
       if (deviceId) qs.set("deviceId", deviceId);
       const data = await api<HealthRecords>(`/api/devices/health/records?${qs}`);
-      if (!data.records.length) return text(`No ${type} samples in the last ${hours ?? 168}h.`);
+      if (!data.records.length) return text(`No ${type} samples in the last ${hours ?? 24}h.`);
       const lines = data.records.map((r) => {
         const v = r.valueJson ? JSON.stringify(r.valueJson) : String(round(r.value));
         return `${r.recordedAt.slice(0, 16).replace("T", " ")}  ${v}${r.unit ? ` ${r.unit}` : ""}`;
       });
-      return text(`${type} (last ${hours ?? 168}h, ${data.records.length}):\n${lines.join("\n")}`);
+      return text(`${type} (last ${hours ?? 24}h, ${data.records.length}):\n${lines.join("\n")}`);
     },
   );
 
