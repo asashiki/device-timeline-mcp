@@ -206,8 +206,12 @@ https://<你的域名>/mcp
 | `GET /api/devices/timeline-query?date=&deviceId=&limit=` | 活动列表 |
 | `GET /api/devices/activity-summary?date=&deviceId=` | 每个应用的时长汇总 |
 | `GET /api/app-labels` | 原始的 appId → {name, desc} 映射 |
+| `GET /api/devices/health/summary?hours=&deviceId=` | 健康数据汇总（每类指标 sum/min/max/avg + 最新值） |
+| `GET /api/devices/health/records?type=&hours=&deviceId=&limit=` | 某类健康指标的原始样本（倒序） |
 | `POST /api/devices/report` | **上报入口**（Android/桌面采集端，Bearer token） |
 | `POST /api/devices/ios/app-event` | **上报** iOS 开/关（Bearer token） |
+| `POST /api/devices/ios/snapshot` | **上报** iOS 电量/专注快照（Bearer token） |
+| `POST /api/devices/health` | **上报** Health Connect 健康样本（Bearer token，`{records:[…]}`） |
 
 `current` / `timeline` 的响应里带了服务端算好的 `appName` 和 `live`（一句自然语言），前端不用自己重写标签逻辑。`/console` 页面就是个现成示例。
 

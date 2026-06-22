@@ -228,8 +228,12 @@ CORS is enabled (`CORS_ORIGIN`, default `*`). All timestamps are **UTC ISO**;
 | `GET /api/devices/timeline-query?date=&deviceId=&limit=` | activity list |
 | `GET /api/devices/activity-summary?date=&deviceId=` | per-app totals |
 | `GET /api/app-labels` | the raw appId → {name, desc} map |
+| `GET /api/devices/health/summary?hours=&deviceId=` | health summary (per-metric sum/min/max/avg + latest) |
+| `GET /api/devices/health/records?type=&hours=&deviceId=&limit=` | raw samples of one health metric (newest first) |
 | `POST /api/devices/report` | **ingest** (Android/desktop reporters, Bearer token) |
 | `POST /api/devices/ios/app-event` | **ingest** iOS open/close (Bearer token) |
+| `POST /api/devices/ios/snapshot` | **ingest** iOS battery/focus snapshot (Bearer token) |
+| `POST /api/devices/health` | **ingest** Health Connect samples (Bearer token, `{records:[…]}`) |
 
 `current` / `timeline` responses include server-computed `appName` and `live`
 (a natural-language phrase), so frontends don't need to reimplement the label
