@@ -13,46 +13,62 @@
     --warm: #D89870; --cool: #7FA8B5; --red: #C97064; --green: #85B58E;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; padding: 28px 24px 64px; background: var(--bg); color: var(--text);
+  html, body { margin: 0; background: var(--bg); }
+  body { color: var(--text); padding: 0 20px 72px;
     font: 14px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif; }
-  .eyebrow { font-size: 11px; letter-spacing: .28em; text-transform: uppercase; color: var(--warm); margin: 0 0 6px; }
-  h1 { font-size: 22px; margin: 0 0 2px; font-weight: 650; letter-spacing: .01em; }
-  h2 { font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: var(--dim);
-    font-weight: 600; margin: 30px 0 12px; }
-  .lede { color: var(--faint); font-size: 12.5px; margin: 0 0 16px; }
-  .bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; }
+  .wrap { max-width: 940px; margin: 0 auto; }
+  header { text-align: center; padding: 40px 0 8px; }
+  .eyebrow { font-size: 11px; letter-spacing: .3em; text-transform: uppercase; color: var(--warm); margin: 0 0 8px; }
+  h1 { font-size: 26px; margin: 0 0 4px; font-weight: 650; letter-spacing: .01em; }
+  .lede { color: var(--faint); font-size: 12.5px; margin: 0; }
+  .bar { display: flex; gap: 8px; align-items: center; justify-content: center; flex-wrap: wrap; margin: 18px 0 4px; }
   input { background: var(--elev); border: 1px solid var(--border-hi); color: var(--text);
-    border-radius: 8px; padding: 7px 11px; min-width: 240px; }
+    border-radius: 8px; padding: 7px 11px; min-width: 220px; text-align: center; }
   input::placeholder { color: var(--faint); }
   button { background: transparent; border: 1px solid var(--border-hi); color: var(--text);
-    border-radius: 8px; padding: 7px 16px; cursor: pointer; transition: border-color .15s, background .15s; }
+    border-radius: 8px; padding: 7px 16px; cursor: pointer; transition: border-color .15s, background .15s, color .15s; font: inherit; }
   button:hover { border-color: var(--warm); color: var(--warm); }
   .muted { color: var(--dim); font-size: 12px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+  h2 { font-size: 11px; letter-spacing: .2em; text-transform: uppercase; color: var(--dim);
+    font-weight: 600; margin: 34px 0 13px; text-align: center; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
   .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 15px; }
   .card .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
   .name { font-weight: 600; } .plat { font-size: 10px; letter-spacing: .12em; color: var(--faint); text-transform: uppercase; }
   .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
   .on { background: var(--green); box-shadow: 0 0 7px var(--green); } .off { background: var(--faint); }
   .live { margin: 10px 0 5px; } .meta { font-size: 12px; color: var(--dim); }
-  /* health metric cards */
   .hcard { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
   .hcard .hl { font-size: 11px; letter-spacing: .1em; color: var(--cool); text-transform: uppercase; }
   .hcard .hv { font-size: 24px; font-weight: 650; margin-top: 4px; }
   .hcard .hu { font-size: 12px; color: var(--dim); font-weight: 400; margin-left: 3px; }
   .hcard .hm { font-size: 11px; color: var(--faint); margin-top: 5px; }
+  /* device filter chips */
+  .chips { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 14px; }
+  .chip { padding: 5px 14px; border-radius: 999px; border: 1px solid var(--border-hi); color: var(--dim);
+    font-size: 12.5px; cursor: pointer; transition: all .15s; }
+  .chip:hover { color: var(--text); border-color: var(--text); }
+  .chip.active { background: var(--warm); border-color: var(--warm); color: var(--bg); font-weight: 600; }
+  .panel { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 6px 18px; }
   table { width: 100%; border-collapse: collapse; }
-  td, th { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--border); font-size: 13px; }
+  td, th { text-align: left; padding: 8px; border-bottom: 1px solid var(--border); font-size: 13px; }
   th { color: var(--dim); font-weight: 600; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
-  .tl { font-size: 13px; padding: 5px 0; border-bottom: 1px solid var(--border); }
-  .tl .t { color: var(--cool); }
-  .err { color: var(--red); } .empty { color: var(--faint); font-style: italic; }
+  tr:last-child td { border-bottom: 0; }
+  .tl { font-size: 13px; padding: 9px 2px; border-bottom: 1px solid var(--border); display: flex; gap: 10px; align-items: baseline; }
+  .tl:last-child { border-bottom: 0; }
+  .tl .t { color: var(--cool); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+  .tl .body { flex: 1; } .tl .dev { color: var(--faint); font-size: 11px; }
+  .err { color: var(--red); padding: 14px; } .empty { color: var(--faint); font-style: italic; padding: 16px; text-align: center; }
 </style>
 </head>
 <body>
-  <p class="eyebrow">Hibi · device timeline</p>
-  <h1>Hibi 日々</h1>
-  <div class="lede">只读看板 · 直连本服务公开接口 · 时间按设备时区展示</div>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Hibi · device timeline</p>
+    <h1>Hibi 日々</h1>
+    <div class="lede">只读看板 · 直连本服务公开接口 · 时间按设备时区展示</div>
+  </header>
+
   <div class="bar">
     <input id="base" placeholder="API base（留空=同源）" />
     <button id="refresh">刷新</button>
@@ -61,12 +77,17 @@
 
   <h2>当前设备状态</h2>
   <div id="devices" class="grid"></div>
+
   <h2>健康数据 · 近 24 小时</h2>
   <div id="health" class="grid"></div>
-  <h2>今日时间线 · 最近 50 条</h2>
-  <div id="timeline"></div>
-  <h2>今日应用统计</h2>
-  <div id="summary"></div>
+
+  <h2>活动时间线 · 今日</h2>
+  <div id="chips" class="chips"></div>
+  <div class="panel"><div id="timeline"></div></div>
+
+  <h2>应用使用统计 · 今日</h2>
+  <div class="panel"><div id="summary"></div></div>
+</div>
 
 <script>
 const $ = (id) => document.getElementById(id);
@@ -74,12 +95,14 @@ function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,(c)=>({"&":"&amp;"
 function hm(iso){return new Intl.DateTimeFormat("zh-CN",{hour:"2-digit",minute:"2-digit"}).format(new Date(iso));}
 function ago(iso){const m=Math.round((Date.now()-new Date(iso).getTime())/60000);if(m<1)return"刚刚";if(m<60)return m+" 分钟前";const h=Math.floor(m/60);return h<24?h+" 小时前":Math.floor(h/24)+" 天前";}
 function dur(s){if(!s)return"进行中";if(s<60)return s+"秒";const m=Math.round(s/60);return m>=60?Math.floor(m/60)+"h"+(m%60)+"m":m+"分钟";}
-
 async function getJson(base,path){const r=await fetch(base+path,{headers:{accept:"application/json"}});if(!r.ok)throw new Error(path+" → "+r.status);return r.json();}
 
+let DEVICES = [];        // [{deviceId, deviceName, platform}]
+let CURRENT = "";        // selected deviceId for timeline filter; "" = all
+
 function renderDevices(data){
-  const list=(data&&data.devices)||[];
-  $("devices").innerHTML = list.length ? list.map((d)=>{
+  DEVICES = (data&&data.devices)||[];
+  $("devices").innerHTML = DEVICES.length ? DEVICES.map((d)=>{
     const e=d.extra||{};
     const batt=e.battery_percent!=null?` · 电量 ${e.battery_percent}%${e.battery_charging?"⚡":""}`:"";
     const net=e.network_type?` · ${esc(e.network_type)}`:"";
@@ -87,6 +110,17 @@ function renderDevices(data){
       <div class="live">${esc(d.live)}</div>
       <div class="meta"><span class="dot ${d.isOnline?"on":"off"}"></span>${d.isOnline?"在线":"离线"} · ${ago(d.lastSeenAt)}${batt}${net}</div></div>`;
   }).join("") : '<div class="empty">无设备数据</div>';
+  renderChips();
+}
+
+function renderChips(){
+  const ids = DEVICES.map(d=>d.deviceId);
+  if (CURRENT && !ids.includes(CURRENT)) CURRENT = "";
+  const chip = (id,label)=>`<span class="chip ${CURRENT===id?"active":""}" data-id="${esc(id)}">${esc(label)}</span>`;
+  $("chips").innerHTML = chip("","全部设备") + DEVICES.map(d=>chip(d.deviceId,d.deviceName)).join("");
+  $("chips").querySelectorAll(".chip").forEach(el=>el.addEventListener("click",()=>{
+    CURRENT = el.getAttribute("data-id"); renderChips(); loadTimeline();
+  }));
 }
 
 const HLABEL={heart_rate:"心率",steps:"步数",sleep:"睡眠",total_calories:"消耗热量",oxygen_saturation:"血氧",distance:"距离",exercise:"运动",blood_pressure:"血压",body_temperature:"体温",respiratory_rate:"呼吸率",blood_glucose:"血糖",weight:"体重",height:"身高"};
@@ -109,9 +143,9 @@ function renderHealth(data){
 }
 
 function renderTimeline(data){
-  const acts=((data&&data.activities)||[]).slice(-50).reverse();
+  const acts=((data&&data.activities)||[]).slice(-80).reverse();
   $("timeline").innerHTML = acts.length ? acts.map((a)=>
-    `<div class="tl"><span class="t">${hm(a.startedAt)}</span> ${esc(a.live)} · ${dur(a.durationSeconds)} <span class="muted">[${esc(a.deviceId)}]</span></div>`
+    `<div class="tl"><span class="t">${hm(a.startedAt)}</span><span class="body">${esc(a.live)} · ${dur(a.durationSeconds)}${CURRENT?"":` <span class="dev">[${esc(a.deviceId)}]</span>`}</span></div>`
   ).join("") : '<div class="empty">今天还没有活动记录</div>';
 }
 function renderSummary(data){
@@ -121,18 +155,26 @@ function renderSummary(data){
   }</tbody></table>` : '<div class="empty">暂无统计</div>';
 }
 
+function baseUrl(){return $("base").value.replace(/\/$/,"");}
+function devQS(){return CURRENT?`&deviceId=${encodeURIComponent(CURRENT)}`:"";}
+
+async function loadTimeline(){
+  try{
+    const [tl,sum] = await Promise.all([
+      getJson(baseUrl(),`/api/devices/timeline-query?limit=300${devQS()}`),
+      getJson(baseUrl(),`/api/devices/activity-summary?${devQS().slice(1)}`),
+    ]);
+    renderTimeline(tl); renderSummary(sum);
+  }catch(err){ $("timeline").innerHTML=`<div class="err">加载失败：${esc(err.message)}</div>`; }
+}
+
 async function load(){
-  const base=$("base").value.replace(/\/$/,"");
   $("status").textContent="加载中…";
-  const sections=[
-    ["devices","/api/devices/current",renderDevices],
-    ["health","/api/devices/health/summary?hours=24",renderHealth],
-    ["timeline","/api/devices/timeline-query?limit=200",renderTimeline],
-    ["summary","/api/devices/activity-summary",renderSummary],
-  ];
-  await Promise.all(sections.map(async([id,path,render])=>{
-    try{render(await getJson(base,path));}catch(err){$(id).innerHTML=`<div class="err">加载失败：${esc(err.message)}</div>`;}
-  }));
+  await Promise.all([
+    getJson(baseUrl(),"/api/devices/current").then(renderDevices).catch(e=>{$("devices").innerHTML=`<div class="err">加载失败：${esc(e.message)}</div>`;}),
+    getJson(baseUrl(),"/api/devices/health/summary?hours=24").then(renderHealth).catch(e=>{$("health").innerHTML=`<div class="err">加载失败：${esc(e.message)}</div>`;}),
+    loadTimeline(),
+  ]);
   $("status").textContent="更新于 "+hm(new Date().toISOString());
 }
 $("refresh").addEventListener("click",load);

@@ -101,6 +101,10 @@ export class Repository {
   report(input: ReportInput): void {
     const { device, appId, windowTitle, occurredAt, extra } = input;
     const extraJson = extra ? JSON.stringify(extra) : null;
+    // Liveness (last_seen / online) uses the SERVER receive time, never the
+    // client-supplied occurredAt — a device with a wrong clock would otherwise
+    // look permanently offline even while actively reporting.
+    const receivedAt = new Date().toISOString();
 
     this.db
       .prepare(
@@ -122,9 +126,9 @@ export class Repository {
         device.platform,
         appId,
         windowTitle,
-        occurredAt,
+        receivedAt,
         extraJson,
-        occurredAt,
+        receivedAt,
       );
 
     if (!appId) return; // no foreground app → state only, no activity row
@@ -228,9 +232,9 @@ export class Repository {
         device.deviceName,
         device.platform,
         nextAppId,
-        occurredAt,
+        new Date().toISOString(),
         existing?.extra_json ?? null,
-        occurredAt,
+        new Date().toISOString(),
       );
 
     return activityId;
@@ -264,9 +268,9 @@ export class Repository {
         device.deviceName,
         device.platform,
         existing?.app_id ?? null,
-        occurredAt,
+        new Date().toISOString(),
         JSON.stringify(merged),
-        occurredAt,
+        new Date().toISOString(),
       );
   }
 
