@@ -10,6 +10,10 @@
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <!-- Self-contained bundles the whole .NET runtime so users need nothing
+         installed; that's the ~100MB, not junk. Compress the bundle to roughly
+         halve it. (Not trimming: PublishTrimmed breaks WinForms reflection.) -->
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <!-- Brand the tray/exe icon (generated from the shared app art). -->
     <ApplicationIcon>icon.ico</ApplicationIcon>
   </PropertyGroup>
