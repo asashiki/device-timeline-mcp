@@ -1,3 +1,15 @@
+<div align="center">
+
+<img src="https://cdn.jsdelivr.net/gh/asashiki/asashiki-design@main/assets/brand/asashiki-mark-color-t.png" alt="Asashiki" width="84" />
+
+![MCP](https://img.shields.io/badge/MCP-server-6b6570?style=flat-square&labelColor=221f26)
+![Self-hosted](https://img.shields.io/badge/Self--hosted-single_user-6b6570?style=flat-square&labelColor=221f26)
+![Storage](https://img.shields.io/badge/Storage-SQLite-6b6570?style=flat-square&labelColor=221f26)
+![License](https://img.shields.io/badge/License-MIT-6b6570?style=flat-square&labelColor=221f26)
+[![Part of Asashiki](https://img.shields.io/badge/Part_of-Asashiki-e85d97?style=flat-square&labelColor=221f26)](https://github.com/asashiki)
+
+</div>
+
 # device-timeline-mcp
 
 > [English](README.md) | **中文**
@@ -18,17 +30,17 @@
 
 ```
 ┌─────────────┐   HTTPS POST /api/devices/report（Bearer token）
-│  各端采集端  │ ───────────────────────────────────────────────┐
+│  各端采集端  │ ────────────────────────────────────┐
 │ android/ios │                                                 ▼
-│ windows/mac │                                         ┌──────────────────┐
+│ windows/mac │                                         ┌─────────────────┐
 └─────────────┘                                         │  收集器           │
                                                         │ （本服务）        │
 ┌─────────────┐   GET /api/devices/*（只读）             │  Fastify+SQLite  │
-│  你的网页前端 │ ◀──────────────────────────────────────▶│  + /console      │
-└─────────────┘                                         └──────────────────┘
+│  你的网页前端 │ ◀───────────────────────────────▶│  + /console      │
+└─────────────┘                                         └─────────────────┘
                                                                  ▲
 ┌─────────────┐   stdio（跑在你的电脑上）                         │ HTTP
-│ Claude /    │ ──▶  src/mcp/server.ts  ────────────────────────┘
+│ Claude /    │ ──▶  src/mcp/server.ts  ──────────────────┘
 │ MCP 客户端   │      (device_status / device_timeline / device_activity_summary)
 └─────────────┘
 ```
@@ -181,7 +193,7 @@ iOS 没有后台采集端，靠 **快捷指令** app 里两个**个人自动化*
 https://<你的域名>/mcp
 ```
 
-- **域名你自己准备**：用任意反向代理 / 隧道把收集器套上 HTTPS，再在客户端里加这个远程连接器。
+- **域名你自己准备**：用任意反向代理 / 隐道把收集器套上 HTTPS，再在客户端里加这个远程连接器。
 - claude.ai **只认 HTTPS** —— 纯 `http://IP:端口` 不行，所以必须走反代上 HTTPS。
 - 该端点**默认不鉴权**（它暴露的是你自己的活动数据）。要么只放在你自己能访问的地方，要么设 `MCP_HTTP_TOKEN`，强制带 `Authorization: Bearer <token>`。想彻底关掉就设 `MCP_HTTP_ENABLED=false`。
 
@@ -249,3 +261,9 @@ SQLite 文件落在 `./data` 卷上。
 ## 许可证
 
 MIT。
+
+---
+
+<div align="center">
+<sub>Asashiki 项目集的一员 · 视觉语言见 <a href="https://github.com/asashiki/asashiki-design">Asashiki Design</a> · 墨と桜。</sub>
+</div>
