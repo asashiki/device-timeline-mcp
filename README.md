@@ -1,3 +1,15 @@
+<div align="center">
+
+<img src="https://cdn.jsdelivr.net/gh/asashiki/asashiki-design@main/assets/brand/asashiki-mark-color-t.png" alt="Asashiki" width="84" />
+
+![MCP](https://img.shields.io/badge/MCP-server-6b6570?style=flat-square&labelColor=221f26)
+![Self-hosted](https://img.shields.io/badge/Self--hosted-single_user-6b6570?style=flat-square&labelColor=221f26)
+![Storage](https://img.shields.io/badge/Storage-SQLite-6b6570?style=flat-square&labelColor=221f26)
+![License](https://img.shields.io/badge/License-MIT-6b6570?style=flat-square&labelColor=221f26)
+[![Part of Asashiki](https://img.shields.io/badge/Part_of-Asashiki-e85d97?style=flat-square&labelColor=221f26)](https://github.com/asashiki)
+
+</div>
+
 # device-timeline-mcp
 
 > **English** | [中文](README.zh-CN.md)
@@ -17,18 +29,18 @@ Single-user, self-hosted, no account system. You run one collector; each of your
 ## Architecture
 
 ```
-┌─────────────┐   HTTPS POST /api/devices/report (Bearer token)
-│  reporters  │ ───────────────────────────────────────────────┐
+┌────────────┐   HTTPS POST /api/devices/report (Bearer token)
+│  reporters  │ ────────────────────────────────────┐
 │ android/ios │                                                 ▼
-│ windows/mac │                                         ┌──────────────────┐
+│ windows/mac │                                         ┌─────────────────┐
 └─────────────┘                                         │  collector       │
                                                         │  (this service)  │
 ┌─────────────┐   GET /api/devices/* (read-only)        │  Fastify+SQLite  │
-│ your web UI │ ◀──────────────────────────────────────▶│  + /console      │
-└─────────────┘                                         └──────────────────┘
+│ your web UI │ ◀───────────────────────────────▶│  + /console      │
+└─────────────┘                                         └─────────────────┘
                                                                  ▲
 ┌─────────────┐   stdio (runs on your laptop)                   │ HTTP
-│ Claude /    │ ──▶  src/mcp/server.ts  ────────────────────────┘
+│ Claude /    │ ──▶  src/mcp/server.ts  ──────────────────┘
 │ MCP client  │      (device_status / device_timeline / device_activity_summary)
 └─────────────┘
 ```
@@ -287,3 +299,9 @@ snapshot while the server is running.
 ## License
 
 MIT.
+
+---
+
+<div align="center">
+<sub>Part of the Asashiki project family · visual language from <a href="https://github.com/asashiki/asashiki-design">Asashiki Design</a> · 墨と桜.</sub>
+</div>
