@@ -14,36 +14,21 @@
 
 > [English](README.md) | **中文**
 
-自托管、单用户的**多设备活动时间线收集器**，内置 **MCP 服务器**。
+**随时查看每台设备正在用什么应用，也可以让 AI 回答“我今天把时间花到哪里了”。**
 
-它记录*你此刻在哪台设备上用什么应用*，覆盖 **Android、iOS、Windows、macOS**，统一存进一个 SQLite 数据库，并通过三种方式暴露出来：
+这是一个自托管、单用户的活动时间线：把 **Android、iOS、Windows、macOS** 的使用记录统一存进 SQLite，并通过三种方式读取：
 
 - 一个**只读 HTTP API**（给你自己的状态页 / 前端用）；
 - 一个**网页控制台**，用来直接看数据；
 - 一个 **MCP 服务器**，让 AI 助手（Claude Desktop、Claude Code…）回答"他现在在干嘛？" / "今天在 B站 花了多久？"。
 
-单用户、自托管、没有账号系统。你跑一个收集器，每台设备用各自的 token 上报。
+没有账号系统：只需运行一个收集器，再给每台设备分配自己的 token。
 
 ---
 
-## 架构
+## 它是怎么连起来的
 
-```
-┌─────────────┐   HTTPS POST /api/devices/report（Bearer token）
-│  各端采集端  │ ────────────────────────────────────┐
-│ android/ios │                                                 ▼
-│ windows/mac │                                         ┌─────────────────┐
-└─────────────┘                                         │  收集器           │
-                                                        │ （本服务）        │
-┌─────────────┐   GET /api/devices/*（只读）             │  Fastify+SQLite  │
-│  你的网页前端 │ ◀───────────────────────────────▶│  + /console      │
-└─────────────┘                                         └─────────────────┘
-                                                                 ▲
-┌─────────────┐   stdio（跑在你的电脑上）                         │ HTTP
-│ Claude /    │ ──▶  src/mcp/server.ts  ──────────────────┘
-│ MCP 客户端   │      (device_status / device_timeline / device_activity_summary)
-└─────────────┘
-```
+![Android、iOS、Windows 与 macOS 把活动上报到同一个收集器，再由网页控制台、API 和 MCP 工具读取](.github/assets/device-flow.svg)
 
 **收集器**跑在服务器上（Docker）。**MCP 服务器**是个很薄的 stdio 进程，跑在你 AI 客户端所在的机器上，它只是去调收集器的只读 API。
 
