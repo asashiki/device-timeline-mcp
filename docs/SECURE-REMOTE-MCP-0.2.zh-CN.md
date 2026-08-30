@@ -58,14 +58,16 @@ MCP_OAUTH_ALLOW_LEGACY_RESOURCE_OMISSION=true
 
 ## 自动验证状态
 
-掉线前已在 Node 环境完成：
+已在恢复后的功能分支重新完成：
 
 - `npm run typecheck` 通过
-- `npm test` 3/3 通过
+- `npm test` 4/4 通过
 - MCP 2026 与 legacy 客户端协商通过
 - 设备写入、REST 读取、MCP 三类凭据隔离测试通过
 - OAuth redirect / PKCE / resource / audience / code replay 测试通过
 - Host header 拒绝测试通过
+
+实现与测试都已提交到远端 `agent/secure-remote-mcp-v2`，不再依赖临时工作区。
 
 ## 显式兼容开关
 

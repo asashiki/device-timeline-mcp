@@ -55,7 +55,8 @@
 git clone <this-repo> device-timeline-mcp
 cd device-timeline-mcp
 cp .env.example .env
-# 编辑 .env → 给每台设备生成一个 token（见下文）
+# 编辑 .env → 配 PUBLIC_BASE_URL、READ_API_TOKEN、OAuth 密钥和每台设备的 token
+mkdir -p data && chown 1000:1000 data
 docker compose up -d --build
 ```
 
@@ -179,7 +180,10 @@ iOS 没有后台采集端，靠 **快捷指令** app 里两个**个人自动化*
     "device-timeline": {
       "command": "node",
       "args": ["/abs/path/device-timeline-mcp/dist/mcp/server.js"],
-      "env": { "MCP_API_BASE": "https://<your-host>" }
+      "env": {
+        "MCP_API_BASE": "https://<your-host>",
+        "MCP_API_TOKEN": "<READ_API_TOKEN>"
+      }
     }
   }
 }
@@ -195,7 +199,8 @@ https://<你的域名>/mcp
 
 - **域名你自己准备**：用任意反向代理 / 隐道把收集器套上 HTTPS，再在客户端里加这个远程连接器。
 - claude.ai **只认 HTTPS** —— 纯 `http://IP:端口` 不行，所以必须走反代上 HTTPS。
-- 该端点**默认不鉴权**（它暴露的是你自己的活动数据）。要么只放在你自己能访问的地方，要么设 `MCP_HTTP_TOKEN`，强制带 `Authorization: Bearer <token>`。想彻底关掉就设 `MCP_HTTP_ENABLED=false`。
+- 远程 MCP 现在**默认拒绝无认证访问**。优先使用 `MCP_AUTH_PASSWORD` 提供的 OAuth 2.1 + S256 PKCE；`MCP_HTTP_TOKEN` 只作为可选静态 Bearer 兼容。OAuth Token 通过 RFC 8707 `resource` 绑定到规范 MCP URL。想彻底关掉就设 `MCP_HTTP_ENABLED=false`。
+- 同一个端点同时服务 MCP 2026-07-28 和旧版 2025 客户端；Host / Origin 检查发生在 Bearer 处理之前。
 
 暴露的工具（两种传输方式一致）：
 
@@ -204,12 +209,14 @@ https://<你的域名>/mcp
 | `device_status` | 每台设备此刻在干嘛（在线、前台应用、电量） |
 | `device_timeline` | 某一天的时间顺序活动（可按 `deviceId` 过滤） |
 | `device_activity_summary` | 某一天每个应用的使用时长汇总 |
+| `health_summary` | 最近一段时间的健康指标合计 / 最新值 |
+| `health_records` | 某一健康指标的有界原始样本 |
 
 ---
 
 ## 只读 API（给你自己的前端）
 
-已开启 CORS（`CORS_ORIGIN`，默认 `*`）。所有时间戳是 **UTC ISO**；`date=` 指 `DISPLAY_TZ`（默认 `Asia/Shanghai`）下的某个日历日。
+所有 `GET /api/*` 都要求 `Authorization: Bearer <READ_API_TOKEN>`；它与设备上报 Token、MCP 凭据刻意分离。浏览器来源通过 `ALLOWED_ORIGINS` 限制。所有时间戳是 **UTC ISO**；`date=` 指 `DISPLAY_TZ`（默认 `Asia/Shanghai`）下的某个日历日。
 
 | 端点 | 用途 |
 |---|---|
@@ -226,6 +233,8 @@ https://<你的域名>/mcp
 | `POST /api/devices/health` | **上报** Health Connect 健康样本（Bearer token，`{records:[…]}`） |
 
 `current` / `timeline` 的响应里带了服务端算好的 `appName` 和 `live`（一句自然语言），前端不用自己重写标签逻辑。`/console` 页面就是个现成示例。
+
+0.1 → 0.2 的蓝绿部署、安全模型、诊断与回滚步骤见 [`docs/SECURE-REMOTE-MCP-0.2.zh-CN.md`](docs/SECURE-REMOTE-MCP-0.2.zh-CN.md)。
 
 ---
 
