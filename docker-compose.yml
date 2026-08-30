@@ -3,6 +3,15 @@ services:
     build: .
     container_name: device-timeline-mcp
     restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: 1.0
     env_file: .env
     environment:
       DB_PATH: /data/device-timeline.sqlite
@@ -17,4 +26,12 @@ services:
       # SQLite database survives container rebuilds (back it up yourself; see README).
       - ./data:/data
       # Edit app-labels.json here to rename apps / tweak phrases without a rebuild.
-      - ./config:/app/config
+      - ./config:/app/config:ro
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid,nodev
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:'+(process.env.PORT||4823)+'/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

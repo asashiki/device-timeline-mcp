@@ -15,12 +15,14 @@ FROM base AS runtime
 ENV NODE_ENV=production
 COPY package.json package-lock.json* ./
 RUN npm install --omit=dev --no-audit --no-fund
-COPY --from=build /app/dist ./dist
-COPY public ./public
+COPY --from=build --chown=node:node /app/dist ./dist
+COPY --chown=node:node public ./public
 # Default label map ships in the image. The compose file bind-mounts ./config
 # over this so you can edit names without rebuilding (changes hot-reload).
-COPY config ./config
+COPY --chown=node:node config ./config
 ENV LABELS_PATH=/app/config/app-labels.json
 ENV DB_PATH=/data/device-timeline.sqlite
+RUN mkdir -p /data && chown node:node /data
+USER node
 EXPOSE 4823
 CMD ["node", "dist/server.js"]

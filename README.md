@@ -57,7 +57,8 @@ read API.
 git clone <this-repo> device-timeline-mcp
 cd device-timeline-mcp
 cp .env.example .env
-# edit .env → generate a token per device (see below)
+# edit .env → set PUBLIC_BASE_URL, READ_API_TOKEN, OAuth secrets, and one token per device
+mkdir -p data && chown 1000:1000 data
 docker compose up -d --build
 ```
 
@@ -192,7 +193,10 @@ collector:
     "device-timeline": {
       "command": "node",
       "args": ["/abs/path/device-timeline-mcp/dist/mcp/server.js"],
-      "env": { "MCP_API_BASE": "https://<your-host>" }
+      "env": {
+        "MCP_API_BASE": "https://<your-host>",
+        "MCP_API_TOKEN": "<READ_API_TOKEN>"
+      }
     }
   }
 }
@@ -213,10 +217,12 @@ https://<your-domain>/mcp
   tunnel of your choice) and add it as a remote MCP connector in your client.
 - claude.ai requires an **HTTPS** URL — a bare `http://IP:port` won't be
   accepted, so the reverse proxy is what makes this work.
-- The endpoint is **unauthenticated by default** (it exposes your own activity).
-  Either keep it behind something only you can reach, or set `MCP_HTTP_TOKEN` to
-  require an `Authorization: Bearer <token>` header. Set `MCP_HTTP_ENABLED=false`
-  to turn the endpoint off entirely.
+- Remote MCP is **fail-closed by default**. Prefer OAuth 2.1 + S256 PKCE through
+  `MCP_AUTH_PASSWORD`; `MCP_HTTP_TOKEN` remains an optional static Bearer fallback.
+  OAuth tokens are audience-bound to the canonical MCP URL with RFC 8707
+  `resource`. Set `MCP_HTTP_ENABLED=false` to disable remote MCP entirely.
+- One endpoint serves both MCP 2026-07-28 and legacy 2025 clients. Host and
+  Origin checks run before bearer-token processing.
 
 Tools exposed (identical for both transports):
 
@@ -225,12 +231,16 @@ Tools exposed (identical for both transports):
 | `device_status` | what every device is doing right now (online, foreground app, battery) |
 | `device_timeline` | chronological activity for a day (filterable by `deviceId`) |
 | `device_activity_summary` | per-app screen-time totals for a day |
+| `health_summary` | totals/latest readings over a recent health window |
+| `health_records` | bounded raw samples for one health metric |
 
 ---
 
 ## Read API (for your own frontends)
 
-CORS is enabled (`CORS_ORIGIN`, default `*`). All timestamps are **UTC ISO**;
+Every `GET /api/*` request requires `Authorization: Bearer <READ_API_TOKEN>`.
+This credential is deliberately separate from device-ingest and MCP credentials.
+CORS is restricted with `ALLOWED_ORIGINS`. All timestamps are **UTC ISO**;
 `date=` means a calendar day in `DISPLAY_TZ` (default `Asia/Shanghai`).
 
 | endpoint | purpose |
@@ -250,6 +260,9 @@ CORS is enabled (`CORS_ORIGIN`, default `*`). All timestamps are **UTC ISO**;
 `current` / `timeline` responses include server-computed `appName` and `live`
 (a natural-language phrase), so frontends don't need to reimplement the label
 logic. The `/console` page is a working example.
+
+For the 0.1 → 0.2 blue/green rollout, security model, diagnostics, and rollback
+steps, see [`docs/SECURE-REMOTE-MCP-0.2.zh-CN.md`](docs/SECURE-REMOTE-MCP-0.2.zh-CN.md).
 
 ---
 
