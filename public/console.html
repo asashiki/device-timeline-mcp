@@ -66,11 +66,12 @@
   <header>
     <p class="eyebrow">Hibi · device timeline</p>
     <h1>Hibi 日々</h1>
-    <div class="lede">只读看板 · 直连本服务公开接口 · 时间按设备时区展示</div>
+    <div class="lede">只读看板 · 独立 READ_API_TOKEN · 时间按设备时区展示</div>
   </header>
 
   <div class="bar">
     <input id="base" placeholder="API base（留空=同源）" />
+    <input id="token" type="password" autocomplete="off" placeholder="READ_API_TOKEN（仅本标签页保存）" />
     <button id="refresh">刷新</button>
     <span class="muted" id="status"></span>
   </div>
@@ -95,7 +96,7 @@ function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,(c)=>({"&":"&amp;"
 function hm(iso){return new Intl.DateTimeFormat("zh-CN",{hour:"2-digit",minute:"2-digit"}).format(new Date(iso));}
 function ago(iso){const m=Math.round((Date.now()-new Date(iso).getTime())/60000);if(m<1)return"刚刚";if(m<60)return m+" 分钟前";const h=Math.floor(m/60);return h<24?h+" 小时前":Math.floor(h/24)+" 天前";}
 function dur(s){if(!s)return"进行中";if(s<60)return s+"秒";const m=Math.round(s/60);return m>=60?Math.floor(m/60)+"h"+(m%60)+"m":m+"分钟";}
-async function getJson(base,path){const r=await fetch(base+path,{headers:{accept:"application/json"}});if(!r.ok)throw new Error(path+" → "+r.status);return r.json();}
+async function getJson(base,path){const token=$("token").value.trim();const r=await fetch(base+path,{headers:{accept:"application/json",...(token?{authorization:"Bearer "+token}:{})}});if(!r.ok)throw new Error(path+" → "+r.status+(r.status===401?"（请填写 READ_API_TOKEN）":""));return r.json();}
 
 let DEVICES = [];        // [{deviceId, deviceName, platform}]
 let CURRENT = "";        // selected deviceId for timeline filter; "" = all
@@ -178,6 +179,8 @@ async function load(){
   $("status").textContent="更新于 "+hm(new Date().toISOString());
 }
 $("refresh").addEventListener("click",load);
+$("token").value=sessionStorage.getItem("hibiReadToken")||"";
+$("token").addEventListener("input",()=>sessionStorage.setItem("hibiReadToken",$("token").value));
 load();
 setInterval(load,30000);
 </script>

@@ -1,4 +1,4 @@
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 
 interface DeviceCurrent {
@@ -56,23 +56,60 @@ function text(s: string) {
   return { content: [{ type: "text" as const, text: s }] };
 }
 
+const READ_ONLY_ANNOTATIONS = {
+  readOnlyHint: true,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: false,
+} as const;
+
+async function readJsonLimited<T>(response: Response, maxBytes = 2 * 1024 * 1024): Promise<T> {
+  const declared = Number(response.headers.get("content-length") ?? "0");
+  if (declared > maxBytes) throw new Error(`API response exceeds ${maxBytes} bytes`);
+  if (!response.body) return JSON.parse(await response.text()) as T;
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let bytes = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    bytes += value.byteLength;
+    if (bytes > maxBytes) {
+      await reader.cancel();
+      throw new Error(`API response exceeds ${maxBytes} bytes`);
+    }
+    chunks.push(value);
+  }
+  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as T;
+}
+
 // Builds a fully-configured MCP server whose tools read from the collector's
 // read-only HTTP API at `apiBase`. Used by both the stdio entrypoint and the
 // HTTP (streamable) transport mounted on the collector.
-export function createMcpServer(apiBase: string): McpServer {
+export function createMcpServer(apiBase: string, apiToken?: string): McpServer {
   const base = apiBase.replace(/\/$/, "");
   async function api<T>(path: string): Promise<T> {
-    const res = await fetch(base + path, { headers: { accept: "application/json" } });
+    const res = await fetch(base + path, {
+      headers: {
+        accept: "application/json",
+        ...(apiToken ? { authorization: `Bearer ${apiToken}` } : {}),
+      },
+      signal: AbortSignal.timeout(10_000),
+    });
     if (!res.ok) throw new Error(`${path} → HTTP ${res.status}`);
-    return (await res.json()) as T;
+    return readJsonLimited<T>(res);
   }
 
-  const server = new McpServer({ name: "device-timeline-mcp", version: "0.1.0" });
+  const server = new McpServer({ name: "device-timeline-mcp", version: "0.2.0" });
 
-  server.tool(
+  server.registerTool(
     "device_status",
-    "Current real-time state of every tracked device: which app is in the foreground, online/offline, battery.",
-    {},
+    {
+      title: "Device Status",
+      description: "Current real-time state of every tracked device: which app is in the foreground, online/offline, battery.",
+      inputSchema: z.object({}),
+      annotations: READ_ONLY_ANNOTATIONS,
+    },
     async () => {
       const data = await api<DeviceCurrent>("/api/devices/current");
       if (!data.devices.length) return text("No devices have reported yet.");
@@ -80,17 +117,24 @@ export function createMcpServer(apiBase: string): McpServer {
         const batt = d.extra && typeof d.extra.battery_percent === "number" ? ` · ${d.extra.battery_percent}%` : "";
         return `- ${d.deviceName} [${d.platform}] ${d.isOnline ? "🟢" : "⚪"} ${d.live}${batt}`;
       });
-      return text(`Devices (as of ${data.fetchedAt}):\n${lines.join("\n")}`);
+      return {
+        ...text(`Devices (as of ${data.fetchedAt}):\n${lines.join("\n")}`),
+        structuredContent: data as unknown as Record<string, unknown>,
+      };
     },
   );
 
-  server.tool(
+  server.registerTool(
     "device_timeline",
-    "Chronological activity timeline for a day (default today). Optionally filter by deviceId.",
     {
-      date: z.string().optional().describe("Calendar day YYYY-MM-DD in the server's display timezone"),
-      deviceId: z.string().optional(),
-      limit: z.number().int().positive().max(500).optional(),
+      title: "Device Timeline",
+      description: "Chronological activity timeline for a day (default today). Optionally filter by deviceId.",
+      inputSchema: z.object({
+        date: z.string().optional().describe("Calendar day YYYY-MM-DD in the server's display timezone"),
+        deviceId: z.string().optional(),
+        limit: z.number().int().positive().max(500).optional(),
+      }),
+      annotations: READ_ONLY_ANNOTATIONS,
     },
     async ({ date, deviceId, limit }) => {
       const qs = new URLSearchParams();
@@ -102,16 +146,23 @@ export function createMcpServer(apiBase: string): McpServer {
       const lines = data.activities.map(
         (a) => `${a.startedAt.slice(11, 16)} ${a.live} · ${fmtDuration(a.durationSeconds)} [${a.deviceId}]`,
       );
-      return text(`Timeline ${data.date}:\n${lines.join("\n")}`);
+      return {
+        ...text(`Timeline ${data.date}:\n${lines.join("\n")}`),
+        structuredContent: data as unknown as Record<string, unknown>,
+      };
     },
   );
 
-  server.tool(
+  server.registerTool(
     "device_activity_summary",
-    "Per-app usage totals for a day (default today): screen time and switch counts, sorted by time.",
     {
-      date: z.string().optional(),
-      deviceId: z.string().optional(),
+      title: "Device Activity Summary",
+      description: "Per-app usage totals for a day (default today): screen time and switch counts, sorted by time.",
+      inputSchema: z.object({
+        date: z.string().optional(),
+        deviceId: z.string().optional(),
+      }),
+      annotations: READ_ONLY_ANNOTATIONS,
     },
     async ({ date, deviceId }) => {
       const qs = new URLSearchParams();
@@ -120,17 +171,24 @@ export function createMcpServer(apiBase: string): McpServer {
       const data = await api<Summary>(`/api/devices/activity-summary?${qs}`);
       if (!data.perApp.length) return text(`No usage recorded for ${data.date}.`);
       const lines = data.perApp.map((p) => `- ${p.appName} (${p.appId}): ${fmtDuration(p.totalSeconds)} ×${p.count}`);
-      return text(`Usage ${data.date} (total ${fmtDuration(data.totalSeconds)}):\n${lines.join("\n")}`);
+      return {
+        ...text(`Usage ${data.date} (total ${fmtDuration(data.totalSeconds)}):\n${lines.join("\n")}`),
+        structuredContent: data as unknown as Record<string, unknown>,
+      };
     },
   );
 
-  server.tool(
+  server.registerTool(
     "health_summary",
-    "Health Connect summary over a recent window (default 24h): per-metric totals or latest readings " +
-      "(heart rate, steps, sleep, calories, SpO2, blood pressure, weight, etc.). Synced from the user's phone.",
     {
-      hours: z.number().positive().max(24 * 90).optional().describe("Look-back window in hours (default 24)"),
-      deviceId: z.string().optional(),
+      title: "Health Summary",
+      description: "Health Connect summary over a recent window (default 24h): per-metric totals or latest readings " +
+        "(heart rate, steps, sleep, calories, SpO2, blood pressure, weight, etc.). Synced from the user's phone.",
+      inputSchema: z.object({
+        hours: z.number().positive().max(24 * 90).optional().describe("Look-back window in hours (default 24)"),
+        deviceId: z.string().optional(),
+      }),
+      annotations: READ_ONLY_ANNOTATIONS,
     },
     async ({ hours, deviceId }) => {
       const qs = new URLSearchParams();
@@ -148,18 +206,25 @@ export function createMcpServer(apiBase: string): McpServer {
         }
         return `- ${m.type}: latest ${round(m.latest.value)}${unit} · avg ${round(m.avg)} · range ${round(m.min)}–${round(m.max)} (${m.count})`;
       });
-      return text(`Health (last ${hours ?? 24}h):\n${lines.join("\n")}`);
+      return {
+        ...text(`Health (last ${hours ?? 24}h):\n${lines.join("\n")}`),
+        structuredContent: data as unknown as Record<string, unknown>,
+      };
     },
   );
 
-  server.tool(
+  server.registerTool(
     "health_records",
-    "Raw Health Connect samples of one metric type over a recent window (default 24h), newest first.",
     {
-      type: z.string().describe("Metric type, e.g. heart_rate, steps, sleep, oxygen_saturation, blood_pressure, weight"),
-      hours: z.number().positive().max(24 * 90).optional().describe("Look-back window in hours (default 24)"),
-      deviceId: z.string().optional(),
-      limit: z.number().int().positive().max(500).optional(),
+      title: "Health Records",
+      description: "Raw Health Connect samples of one metric type over a recent window (default 24h), newest first.",
+      inputSchema: z.object({
+        type: z.string().describe("Metric type, e.g. heart_rate, steps, sleep, oxygen_saturation, blood_pressure, weight"),
+        hours: z.number().positive().max(24 * 90).optional().describe("Look-back window in hours (default 24)"),
+        deviceId: z.string().optional(),
+        limit: z.number().int().positive().max(500).optional(),
+      }),
+      annotations: READ_ONLY_ANNOTATIONS,
     },
     async ({ type, hours, deviceId, limit }) => {
       const qs = new URLSearchParams();
@@ -173,7 +238,10 @@ export function createMcpServer(apiBase: string): McpServer {
         const v = r.valueJson ? JSON.stringify(r.valueJson) : String(round(r.value));
         return `${r.recordedAt.slice(0, 16).replace("T", " ")}  ${v}${r.unit ? ` ${r.unit}` : ""}`;
       });
-      return text(`${type} (last ${hours ?? 24}h, ${data.records.length}):\n${lines.join("\n")}`);
+      return {
+        ...text(`${type} (last ${hours ?? 24}h, ${data.records.length}):\n${lines.join("\n")}`),
+        structuredContent: data as unknown as Record<string, unknown>,
+      };
     },
   );
 

@@ -1,8 +1,9 @@
 import type { FastifyInstance } from "fastify";
-import { z } from "zod";
+import { z } from "zod/v3";
 import type { Repository } from "./db/repo.js";
 import type { DeviceAuth } from "./device-auth.js";
 import type { Labels } from "./labels/labels.js";
+import type { ReadAuth } from "./read-auth.js";
 import { LATEST_VERSION } from "./db/migrations.js";
 import { todayInTz, toUtcIso } from "./time.js";
 
@@ -18,10 +19,22 @@ export interface RouteContext {
   auth: DeviceAuth;
   labels: Labels;
   rawLabels: Record<string, unknown>;
+  readAuth: ReadAuth;
 }
 
 export function registerRoutes(app: FastifyInstance, ctx: RouteContext): void {
   const { repo, auth, labels } = ctx;
+
+  app.addHook("preHandler", async (request, reply) => {
+    if (request.method === "GET" && request.url.startsWith("/api/")) {
+      if (!ctx.readAuth.resolve(request.headers.authorization)) {
+        return reply
+          .code(401)
+          .header("WWW-Authenticate", 'Bearer realm="device-timeline-read-api"')
+          .send({ error: "read API token required" });
+      }
+    }
+  });
 
   app.get("/health", async () => ({
     status: "ok",
@@ -134,7 +147,7 @@ export function registerRoutes(app: FastifyInstance, ctx: RouteContext): void {
     return reply.code(202).send({ ok: true, stored });
   });
 
-  // ── Health read API (public, read-only) ───────────────────────────────────
+  // ── Health read API (READ_API_TOKEN, read-only) ──────────────────────────
   const healthQuery = z.object({
     deviceId: z.string().optional(),
     type: z.string().optional(),
@@ -171,7 +184,7 @@ export function registerRoutes(app: FastifyInstance, ctx: RouteContext): void {
     };
   });
 
-  // ── Read API (public, read-only — for the console + your own frontends) ───
+  // ── Read API (READ_API_TOKEN — for console + trusted frontends) ──────────
   app.get("/api/devices/current", async () => {
     const devices = repo.currentStates().map((d) => ({
       ...d,
