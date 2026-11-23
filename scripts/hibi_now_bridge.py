@@ -108,6 +108,10 @@ def render(body):
                  and 0 <= (checked-poll).total_seconds() < 360 and 0 <= (poll-sample).total_seconds() <= 300)
     sleep_label = ('还没记录到新一觉（' + poll.astimezone(LOCAL).strftime('%H:%M') + ' 核对）'
                    if unchanged else SLEEP.get(sleep.get('state'), '手环还没判出来'))
+    if (sleep.get('state')=='unknown' and sleep.get('reason')=='no_explicit_sleep_state_observation'
+            and last.get('change')=='unchanged' and record.get('end') and poll
+            and 0 <= (checked-poll).total_seconds() < 360 and not unchanged):
+        sleep_label='等待手环同步' + ('，最近的手环样本 '+sample.astimezone(LOCAL).strftime('%H:%M') if sample else '')
     lines.append('此刻睡眠　' + sleep_label
                  + ('（心率和步数符合以往睡眠记录）' if sleep.get('reason') == 'personal_sleep_pattern' else '（最近有连续步行）' if sleep.get('state') == 'likely_awake' else '')
                  + (' · ' + seen(sleep['sampledAt'], checked) if stamp(sleep.get('sampledAt')) else ''))
