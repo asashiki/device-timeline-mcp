@@ -22,7 +22,9 @@ class SettingsStore(context: Context) {
         hcSyncRangeHours = prefs.getLong(KEY_HC_SYNC_RANGE, 24L),
     )
 
-    fun save(settings: AgentSettings) {
+    fun save(settings: AgentSettings) { editor(settings).apply() }
+    fun saveImported(settings: AgentSettings): Boolean = editor(settings).commit()
+    private fun editor(settings: AgentSettings): SharedPreferences.Editor =
         prefs.edit()
             .putString(KEY_SERVER_URL, settings.serverUrl.trim())
             .putString(KEY_TOKEN, settings.token.trim())
@@ -33,8 +35,6 @@ class SettingsStore(context: Context) {
             .putBoolean(KEY_HC_SYNC_ENABLED, settings.hcSyncEnabled)
             .putLong(KEY_HC_SYNC_INTERVAL, settings.hcSyncIntervalMinutes.coerceAtLeast(15L))
             .putLong(KEY_HC_SYNC_RANGE, settings.hcSyncRangeHours.coerceAtLeast(1L))
-            .apply()
-    }
 
     fun setRunningEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_RUNNING_ENABLED, enabled).apply()

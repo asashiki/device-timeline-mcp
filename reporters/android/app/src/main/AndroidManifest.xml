@@ -36,6 +36,10 @@
     <uses-permission android:name="android.permission.health.READ_WEIGHT" />
     <uses-permission android:name="android.permission.health.READ_HEIGHT" />
 
+    <queries>
+        <package android:name="com.devicetimeline.agent" />
+    </queries>
+
     <application
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"

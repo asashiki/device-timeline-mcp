@@ -28,12 +28,13 @@ object AppIconManager {
         }
         val pm = context.packageManager
         val pkg = context.packageName
+        val aliasNamespace = MainActivity::class.java.packageName
         // Enable the target first so there is never a moment with zero launcher
         // entries, then disable the others.
-        setState(pm, ComponentName(pkg, pkg + want), enable = true)
+        setState(pm, ComponentName(pkg, aliasNamespace + want), enable = true)
         for (alias in ALL) {
             if (alias == want) continue
-            setState(pm, ComponentName(pkg, pkg + alias), enable = false)
+            setState(pm, ComponentName(pkg, aliasNamespace + alias), enable = false)
         }
     }
 

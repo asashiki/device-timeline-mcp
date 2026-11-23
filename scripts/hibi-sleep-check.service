@@ -1,0 +1,22 @@
+[Unit]
+Description=Check live Hibi sleep evidence and update the configured private Notion paragraph
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+DynamicUser=yes
+EnvironmentFile=/etc/hibi/helpers.env
+LoadCredential=notion-token:/etc/hibi/notion-token
+LoadCredential=context-read-token:/etc/hibi/context-read-token
+ExecStart=/usr/bin/python3 -B /usr/local/lib/hibi/hibi_sleep_check_notion.py --nightly --db ${HIBI_DB_PATH} --state-dir /var/lib/hibi-sleep-check
+StateDirectory=hibi-sleep-check
+StateDirectoryMode=0700
+UMask=0077
+Nice=10
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX

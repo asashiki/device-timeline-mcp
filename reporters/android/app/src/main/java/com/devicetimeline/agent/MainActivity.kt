@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -36,6 +37,8 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -68,6 +71,12 @@ import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
 import androidx.health.connect.client.records.WeightRecord
 import androidx.lifecycle.lifecycleScope
+import com.devicetimeline.agent.band.BandSample
+import com.devicetimeline.agent.band.BandSync
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -138,6 +147,14 @@ class MainActivity : ComponentActivity() {
         ) {
             notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
+        lifecycleScope.launch {
+            // Pairing data and encrypted state from the earlier test use the same package and key alias.
+            withContext(Dispatchers.IO) { runCatching { BandSync.importPairing(this@MainActivity) } }
+            renderScreen()
+        }
+    }
+
+    private fun renderScreen() {
         setContent {
             MaterialTheme(colorScheme = HibiColors) {
                 Surface(modifier = Modifier.fillMaxSize()) {
@@ -157,6 +174,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        // The OS can delay package-replaced broadcasts. Opening the upgraded app
+        // restores the user's existing recording setting through its normal service.
+        if (SettingsStore(this).load().isRunningEnabled) {
+            val resume = Intent(this, TrackingService::class.java).setAction(TrackingService.ACTION_START)
+            runCatching { ContextCompat.startForegroundService(this, resume) }
+                .onFailure { SettingsStore(this).appendLog("未能恢复监听，等待系统重试") }
+        }
         refreshPerms()
         refreshHealth()
     }
@@ -291,6 +315,7 @@ private fun AgentScreen(
         if (!running) {
             Button(
                 onClick = {
+
                     running = true; persist(); startService(TrackingService.ACTION_START)
                     status = "已启动监听"
                 },
@@ -308,16 +333,24 @@ private fun AgentScreen(
         }
         if (status.isNotBlank()) Text(status, color = Ink.dim, fontSize = 12.sp)
 
+        BandMonitorCard(running, configured, onStart = {
+            running = true
+            persist()
+            startService(TrackingService.ACTION_START)
+        }, onStopBand = {
+            if (running) startService(TrackingService.ACTION_START)
+        })
+
         // ── Connection ────────────────────────────────────────────────────────
         SectionCard("连接") {
             OutlinedTextField(
                 value = serverUrl, onValueChange = { serverUrl = it },
-                label = { Text("服务器地址") }, placeholder = { Text("https://link.asashiki.com") },
+                label = { Text("服务器地址") }, placeholder = { Text("https://hibi.example.org") },
                 singleLine = true, modifier = Modifier.fillMaxWidth(),
             )
             OutlinedTextField(
                 value = token, onValueChange = { token = it },
-                label = { Text("设备 Token") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                label = { Text("设备 Token") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(),
             )
             OutlinedTextField(
                 value = heartbeat, onValueChange = { heartbeat = it.filter(Char::isDigit) },
@@ -397,6 +430,141 @@ private fun AgentScreen(
             )
         }
         Spacer(Modifier.height(8.dp))
+    }
+}
+
+private fun bandTime(ms: Long) = if (ms > 0) DateTimeFormatter.ofPattern("MM-dd HH:mm")
+    .withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(ms)) else "尚无"
+
+@Composable
+private fun BandMonitorCard(
+    running: Boolean, configured: Boolean, onStart: () -> Unit, onStopBand: () -> Unit,
+) {
+    val context = LocalContext.current
+    val report = remember { BandReporting(context.applicationContext) }
+    val revision by BandReporting.revision.collectAsState()
+    var enabled by remember { mutableStateOf(report.enabled) }
+    var bound by remember { mutableStateOf(false) }
+    var info by remember { mutableStateOf(report.status()) }
+    var hint by remember { mutableStateOf("") }
+    var diagnosticsOpen by remember { mutableStateOf(false) }
+    var latest by remember { mutableStateOf<Map<String, BandSample>>(emptyMap()) }
+    LaunchedEffect(revision) {
+        latest = withContext(Dispatchers.IO) { BandSync.latestByType(context).associateBy { it.type } }
+        withContext(Dispatchers.IO) { BandSync.hasPairing(context) }.let { bound = it }
+        enabled = report.enabled
+        info = report.status()
+    }
+    fun start() {
+        if (!bound || !configured) return
+
+        report.enable(true)
+        enabled = true
+        hint = ""
+        onStart()
+    }
+    val pairingScope = rememberCoroutineScope()
+    val choosePairing = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) pairingScope.launch {
+            val imported = withContext(Dispatchers.IO) {
+                runCatching {
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        BandSync.importPairingDocument(context, input)
+                    } ?: error("Unable to read the pairing file")
+                }.isSuccess
+            }
+            if (imported) bound = true
+            hint = if (imported) "配对资料已保存，可以开启手环监测。" else "文件未能导入，请检查型号和配对资料格式。"
+        }
+    }
+    val btPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) start() else hint = "打开手环监测需要附近设备权限。"
+    }
+    SectionCard("手环监测") {
+        Text("小米手环 9 Pro", color = Ink.text, fontWeight = FontWeight.SemiBold)
+        val text = when {
+            !bound -> "等待导入已配对的手环"
+            !configured -> "请先保存服务器连接"
+            enabled && !running -> "监听已暂停"
+            !enabled -> "手环监测已关闭"
+            !BandReporting.hasBluetooth(context) -> "需要附近设备权限才能读取手环"
+            info.note == "手机蓝牙未开启" -> "请打开手机蓝牙，下次会自动同步"
+            latest.isNotEmpty() -> "手环读数已保存在本机"
+            else -> "等待手环传回第一条记录"
+        }
+        StatusLine(text, if (enabled && running) Ink.cool else Ink.dim)
+        if (info.uploadedAt > 0) {
+            Text("上次成功上传  " + bandTime(info.uploadedAt), color = Ink.dim, fontSize = 12.sp)
+        }
+        val lastSleep = latest["sleep_session"]
+        val wakeDay = lastSleep?.endAt?.let { end ->
+            runCatching { Instant.parse(end).atZone(ZoneId.systemDefault()).toLocalDate() }.getOrNull()
+        }
+        BandSampleRow("最近一次完整睡眠", lastSleep)
+        if (enabled && running && wakeDay != java.time.LocalDate.now()) {
+            Text("等待手环传回今天结束的完整睡眠。", color = Ink.dim, fontSize = 12.sp)
+        }
+        BandSampleRow("心率", latest["heart_rate"])
+        BandSampleRow("步数", latest["steps"])
+        if (hint.isNotEmpty()) Text(hint, color = Ink.warm, fontSize = 12.sp)
+        if (!bound && Build.VERSION.SDK_INT >= 31) {
+            OutlinedButton(onClick = { choosePairing.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }) {
+                Text("导入我的手环配对文件")
+            }
+        }
+        if (enabled && running) {
+            OutlinedButton(onClick = { report.enable(false); enabled = false; onStopBand() }) { Text("关闭手环监测") }
+        } else {
+            Button(enabled = configured && bound && Build.VERSION.SDK_INT >= 31,
+                onClick = {
+                    if (BandReporting.hasBluetooth(context)) start()
+                    else btPermission.launch(Manifest.permission.BLUETOOTH_CONNECT)
+                }) { Text("开启手环监测") }
+        }
+        androidx.compose.material3.TextButton(onClick = { diagnosticsOpen = !diagnosticsOpen }) {
+            Text(if (diagnosticsOpen) "收起诊断" else "查看诊断")
+        }
+        if (diagnosticsOpen) {
+            Text(info.note, color = Ink.dim, fontSize = 12.sp)
+            Text("本机最近保存新读数  " + bandTime(info.readAt), color = Ink.dim, fontSize = 12.sp)
+            if (info.uploadNote.isNotEmpty()) Text(info.uploadNote, color = Ink.dim, fontSize = 12.sp)
+            BandSampleRow("上次睡眠状态观测", latest["sleep_state"])
+        }
+    }
+}
+
+private fun localBandTime(timestamp: String) =
+    runCatching { bandTime(Instant.parse(timestamp).toEpochMilli()) }.getOrDefault(timestamp)
+
+@Composable
+private fun BandSampleRow(label: String, sample: BandSample?) {
+    val value = when (sample?.type) {
+        "heart_rate" -> "${sample.value} 次/分"
+        "steps" -> "${sample.value} 步（该分钟）"
+        "sleep_state" -> if (sample.value == 1) "睡着" else "清醒"
+        "sleep_session" -> {
+            val minutes = sample.asleepMinutes ?: sample.value
+            val duration = if (minutes >= 60) "${minutes / 60} 小时 ${minutes % 60} 分" else "${minutes} 分钟"
+            if (sample.asleepMinutes != null) "实睡 $duration" else "记录跨度 $duration"
+        }
+        else -> "尚无记录"
+    }
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, color = Ink.text, fontSize = 14.sp)
+        Column(horizontalAlignment = Alignment.End) {
+            Text(value, color = Ink.dim, fontSize = 14.sp)
+            if (sample != null) {
+                val whenMeasured = localBandTime(sample.recordedAt) +
+                    (sample.endAt?.let { " 至 " + localBandTime(it) } ?: "")
+                val timeLabel = when (sample.type) {
+                    "sleep_state" -> "手机观测于 "
+                    "sleep_session" -> ""
+                    else -> "手环记录于 "
+                }
+                Text(timeLabel + whenMeasured,
+                    color = Ink.faint, fontSize = 12.sp)
+            }
+        }
     }
 }
 

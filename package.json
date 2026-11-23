@@ -5,15 +5,17 @@
   "type": "module",
   "license": "MIT",
   "engines": {
-    "node": ">=22.5.0"
+    "node": ">=22.13.0"
   },
   "scripts": {
-    "dev": "tsx watch src/server.ts",
+    "dev": "node --env-file-if-exists=.env --import tsx src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js",
-    "mcp": "node dist/mcp/server.js",
-    "mcp:dev": "tsx src/mcp/server.ts",
-    "typecheck": "tsc --noEmit"
+    "start": "node --env-file-if-exists=.env dist/server.js",
+    "mcp": "node --env-file-if-exists=.env dist/mcp/server.js",
+    "mcp:dev": "node --env-file-if-exists=.env --import tsx src/mcp/server.ts",
+    "typecheck": "tsc --noEmit",
+    "configure": "node tools/init-config.mjs",
+    "test": "npm run build && node --test tests/*.test.mjs"
   },
   "dependencies": {
     "@fastify/cors": "^11.1.0",

@@ -1,0 +1,11 @@
+**
+!Dockerfile
+!package.json
+!package-lock.json
+!tsconfig.json
+!src/
+!src/**
+!public/
+!public/**
+!config/
+!config/app-labels.json

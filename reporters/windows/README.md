@@ -33,3 +33,5 @@ from `appsettings.example.json`.
 foreground window title (truncated to 256). When idle ≥ AFK threshold it reports
 `appId="windows.afk"`; with no foreground window, `windows.idle`. `customApps`
 rules rewrite the displayed name/description client-side via `extra`.
+
+Power readings come from Windows. A laptop can report its battery percentage, charging flag and AC/battery source. A desktop or unsupported battery can leave these fields empty. The reporter labels Wi-Fi or Ethernet when active gateway interfaces agree on one connection type.

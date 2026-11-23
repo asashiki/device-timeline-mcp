@@ -14,3 +14,5 @@ dependencyResolutionManagement {
 }
 rootProject.name = "DeviceTimelineAgent"
 include(":app")
+include(":hibi-band")
+include(":healthapp-core")

@@ -5,7 +5,7 @@
 ![MCP](https://img.shields.io/badge/MCP-server-6b6570?style=flat-square&labelColor=221f26)
 ![Self-hosted](https://img.shields.io/badge/Self--hosted-single_user-6b6570?style=flat-square&labelColor=221f26)
 ![Storage](https://img.shields.io/badge/Storage-SQLite-6b6570?style=flat-square&labelColor=221f26)
-![License](https://img.shields.io/badge/License-MIT-6b6570?style=flat-square&labelColor=221f26)
+![License](https://img.shields.io/badge/License-MIT%20%2F%20AGPL--3.0-6b6570?style=flat-square&labelColor=221f26)
 [![Part of Asashiki](https://img.shields.io/badge/Part_of-Asashiki-e85d97?style=flat-square&labelColor=221f26)](https://github.com/asashiki)
 
 </div>
@@ -54,28 +54,38 @@ read API.
 ## Quick start (Docker)
 
 ```bash
-git clone <this-repo> device-timeline-mcp
+git clone https://github.com/asashiki/device-timeline-mcp.git
 cd device-timeline-mcp
-cp .env.example .env
-# edit .env → generate a token per device (see below)
+node tools/init-config.mjs
+
 docker compose up -d --build
 ```
 
-Open `http://<host>:4823/console` — you should see your devices appear as they
+On a Docker-only host, run the configuration command with `docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/src" -w /src node:24-bookworm-slim node tools/init-config.mjs`.
+
+Open `http://localhost:4823/console` — you should see your devices appear as they
 start reporting. Health check: `curl http://<host>:4823/health`.
 
-### Without Docker (Node ≥ 22.5)
+### Without Docker (Node ≥ 22.13)
 
 ```bash
-npm install
-cp .env.example .env   # edit it
+npm ci
+node tools/init-config.mjs
 npm run build && npm start      # or: npm run dev
 ```
 
-> **Why Node 22.5+?** The collector uses Node's built-in `node:sqlite` — no
+> **Why Node 22.13+?** The collector uses Node's built-in `node:sqlite` — no
 > native module to compile.
 
 ---
+
+## Body readings and daily records
+
+On first install, `node tools/init-config.mjs` creates the device tokens in `config/device-tokens.json` and read credentials in `private/`. Existing files are preserved on a second run. Enter each device’s token in its reporter. Set `HIBI_CONSOLE_ORIGIN` to the public HTTPS origin when serving the console behind a reverse proxy.
+
+Authorized clients can read the latest heart rate, recorded steps, last sleep and current sleep estimate at `GET /api/agent/body-now`. The body read credential grants access to these readings. The context read credential also includes the state of each device and available Mac desktop or window information. Each reading includes its observation time. Use `GET /api/agent/body-range?from=…&to=…` to read completed periods of up to seven days. Sleep estimates carry their evidence source and may be unavailable when the band has not supplied recent samples.
+
+The optional Notion integration refreshes a private snapshot and writes dated pages with expandable hourly timelines. See [report and Notion setup](scripts/README.md).
 
 ## Device tokens & multi-device naming
 
@@ -112,19 +122,17 @@ setup steps:
 
 | platform | source | notes |
 |---|---|---|
-| Android | [`reporters/android`](reporters/android) | timeline-only Kotlin app (foreground service) |
+| Android | [`reporters/android`](reporters/android) | Kotlin foreground service for app activity, optional Health Connect and supported paired bands |
 | Windows | [`reporters/windows`](reporters/windows) | .NET tray app, single-file exe |
-| macOS | [`reporters/macos`](reporters/macos) | Python + launchd daemon |
+| macOS | [Native app](reporters/macos-native) or [Python reporter](reporters/macos) | Foreground activity, battery and optional window context in the native app |
 | iOS | [`reporters/ios`](reporters/ios) | Shortcuts automations (no installable app) |
 
-The desktop/Android reporters do the same thing: sample the foreground app + window
-title every ~10s and `POST /api/devices/report` with their Bearer token. All you
-configure is the **server URL** and the device **token**.
+Each reporter uses its own server URL and device token. Android observes foreground transitions and periodic samples. The native Mac app also reports power and current window context. iOS uses the Shortcuts events from the apps you select.
 
 ### Android (phone & tablet)
 
 Build the APK from [`reporters/android`](reporters/android) (Android Studio or
-`./gradlew assembleRelease`), then:
+the Gradle command in its README), then:
 
 1. Install the APK on the device.
 2. Open it once → grant **Usage Access** (设置 → 应用 → 特殊权限 → 使用情况访问) and
@@ -298,7 +306,7 @@ snapshot while the server is running.
 
 ## License
 
-MIT.
+The collector and desktop reporters use the [MIT license](LICENSE). The Android app with its bundled HealthAPP protocol code is distributed under [AGPL-3.0](reporters/android/healthapp-core/src/main/assets/healthapp/LICENSE-AGPL-3.0.txt). See the [upstream notice](reporters/android/healthapp-core/UPSTREAM.md).
 
 ---
 

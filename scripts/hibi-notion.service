@@ -1,0 +1,27 @@
+[Unit]
+Description=Update daily device records in Notion from the Hibi database
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists=/etc/hibi/notion-token
+StartLimitIntervalSec=1h
+StartLimitBurst=3
+
+[Service]
+Type=oneshot
+DynamicUser=yes
+EnvironmentFile=/etc/hibi/helpers.env
+LoadCredential=notion-token:/etc/hibi/notion-token
+ExecStart=/usr/bin/python3 -B /usr/local/lib/hibi/hibi_notion.py --db ${HIBI_DB_PATH} --token-file ${CREDENTIALS_DIRECTORY}/notion-token --state-dir /var/lib/hibi-notion
+StateDirectory=hibi-notion
+StateDirectoryMode=0700
+UMask=0077
+Nice=10
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+TimeoutStartSec=8min
+Restart=on-failure
+RestartSec=5min

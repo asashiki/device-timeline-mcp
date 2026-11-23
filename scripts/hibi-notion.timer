@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh Hibi records during the morning and before midnight (Shanghai time)
+
+[Timer]
+OnCalendar=*-*-* 08,10,12:05:00 Asia/Shanghai
+OnCalendar=*-*-* 23:55:00 Asia/Shanghai
+Persistent=true
+Unit=hibi-notion.service
+
+[Install]
+WantedBy=timers.target

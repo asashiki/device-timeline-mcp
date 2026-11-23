@@ -50,7 +50,7 @@ export class Labels {
     return this.map;
   }
 
-  liveDescription(appId: string | null | undefined, windowTitle?: string | null, who = "Asashiki"): string {
+  liveDescription(appId: string | null | undefined, windowTitle?: string | null, who = "用户"): string {
     const lbl = this.label(appId);
     const title = windowTitle ? clean(windowTitle) : "";
 

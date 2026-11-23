@@ -1,0 +1,3 @@
+Hibi 手环数据采集 2026-11。模块依赖以 AGPL-3.0 发布的 HealthAPP，协议与传输层由 HealthAPP 项目提供，协议资料参考 AstralSightStudios/AstroBox-NG。Hibi 增加后台同步、持久化队列与状态显示。本模块采用 AGPL-3.0 授权。
+https://github.com/AstralSightStudios/AstroBox-NG
+HealthAPP 上游源码与作者 https://github.com/zyp556678/HealthAPP/tree/42102afcd9c7aec2f1df90997440b792ec0bab88
