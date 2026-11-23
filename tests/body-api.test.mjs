@@ -52,7 +52,8 @@ test('a read capability gets live status and cannot ingest; a device key cannot 
   assert.equal((await ingest({...growth,value:98})).statusCode,400);
   assert.equal((await ingest(growth)).statusCode,202);
   const live = (await app.inject({url,headers:{authorization:'Bearer '+key}})).json().currentSleep;
-  assert.equal(live.state,'likely_asleep');
+  assert.equal(live.state,'asleep');
+  assert.equal(live.evidenceState,'likely_asleep');
   assert.equal(live.previousSampleAt,growth.valueJson.previousObservedAt);
   const push = {...poll, value:1, recordedAt:new Date().toISOString(), valueJson:{origin:'band_status_event',timeBasis:'phone_observed'}};
   assert.equal((await ingest(push)).statusCode,202);

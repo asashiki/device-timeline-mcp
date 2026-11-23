@@ -62,7 +62,9 @@ def measure(token_file, started, deadline):
         when=instant(body['asOf'])
         if not started-timedelta(seconds=2)<=when<=min(done+timedelta(seconds=2),deadline):
             raise ValueError('Snapshot clock mismatch')
-        sleep=body['currentSleep']
+        # The nightly check evaluates sensor evidence, including unknowns.
+        sleep = dict(body['currentSleep'])
+        sleep['state'] = sleep.get('evidenceState', sleep['state'])
         if body.get('deviceId') != HEALTH_DEVICE or sleep.get('state') not in {
                 'asleep','likely_asleep','awake','likely_awake','unknown'}:
             raise ValueError('Unexpected snapshot')

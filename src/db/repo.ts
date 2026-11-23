@@ -141,7 +141,14 @@ export class Repository {
   }
 
   liveBodyNow() {
-    return { ...readLiveHealth(this.db, LIVE_HEALTH_DEVICE_ID), sleepRecordChecks:readSleepChecks(this.db, LIVE_HEALTH_DEVICE_ID) };
+    const body = readLiveHealth(this.db, LIVE_HEALTH_DEVICE_ID);
+    const observed = body.currentSleep;
+    const state = observed.state === 'asleep' || observed.state === 'likely_asleep' ? 'asleep' : 'awake';
+    return {
+      ...body,
+      currentSleep: { ...observed, evidenceState: observed.state, state },
+      sleepRecordChecks: readSleepChecks(this.db, LIVE_HEALTH_DEVICE_ID),
+    };
   }
 
   bodyRange(from: string, to: string, now: Date) {
