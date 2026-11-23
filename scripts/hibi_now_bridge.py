@@ -98,7 +98,7 @@ def render(body):
     lines.append(f'今日已记录 {count} 步 · 最近采样 {seen(steps.get("lastSampleAt"), checked)}'
                  if type(count) is int and count >= 0 else '今日步数　尚无记录')
     lines.append('此刻睡眠　' + SLEEP.get(sleep.get('state'), '手环还没判出来')
-                 + ('（最近有键鼠操作）' if sleep.get('reason') == 'recent_device_input' else '（心率和步数符合以往睡眠记录）' if sleep.get('reason') == 'personal_sleep_pattern' else '（最近有连续步行）' if sleep.get('state') == 'likely_awake' else '')
+                 + ('（心率和步数符合以往睡眠记录）' if sleep.get('reason') == 'personal_sleep_pattern' else '（最近有连续步行）' if sleep.get('state') == 'likely_awake' else '')
                  + (' · ' + seen(sleep['sampledAt'], checked) if stamp(sleep.get('sampledAt')) else ''))
     begin, end = stamp(night.get('startedAt')), stamp(night.get('endedAt'))
     if begin and end:

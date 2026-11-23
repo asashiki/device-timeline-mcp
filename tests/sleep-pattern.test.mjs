@@ -18,7 +18,7 @@ function setup(t) {
     sample('steps',i,0);
     if(i!==-6 && i!==-11)sample('heart_rate',i,53);
   }
-  const read=(input=null)=>readLiveHealth(db,phone,now,input).currentSleep;
+  const read=()=>readLiveHealth(db,phone,now).currentSleep;
   return {db,read};
 }
 
@@ -30,7 +30,6 @@ test('independent past on-band profile, daytime contrast, measured quiet minutes
   assert.equal(result.sessionStart,null);
   assert.equal(result.evidence.sleepPattern.heartMinutes,13);
   assert.equal(result.evidence.sleepPattern.profile.endedAt,at(-1520));
-  assert.equal(read({observedAt:at(-1),receivedAt:at(0)}).reason,'recent_device_input');
   db.prepare("INSERT INTO band_sleep_observations(device_id,session_start,observed_at,state,origin,time_basis,received_at) VALUES(?,'',?,'awake','band_basic_status','phone_observed',?)").run(phone,at(-4),at(0));
   assert.equal(read().state,'awake');
   db.exec('DELETE FROM band_sleep_observations');

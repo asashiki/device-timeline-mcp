@@ -8,7 +8,6 @@ struct MacContext: Codable {
     var appId: String?
     var windowTitle: String?
     var desktop: Int?
-    var recentInputAt: String?
 }
 
 // Match the single active space to the current space on its display. Desktop
@@ -112,17 +111,6 @@ private final class ContextSessionDelegate: NSObject, URLSessionTaskDelegate {
 
     static func canReadTitle() -> Bool { AXIsProcessTrusted() || CGPreflightScreenCaptureAccess() }
 
-    // Read aggregate HID event counters, never keystrokes, locations or event payloads.
-    private func recentInput(at now: Date) -> String? {
-        let presses: [CGEventType] = [.keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown]
-        let ages = presses.compactMap { type -> TimeInterval? in
-            guard CGEventSource.counterForEventType(.hidSystemState, eventType: type) > 0 else { return nil }
-            let age = CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: type)
-            return age.isFinite && age >= 0 && age <= 120 ? age : nil
-        }
-        return ages.min().map { clock.string(from: now.addingTimeInterval(-$0)) }
-    }
-
     func sample(enabled: Bool, screenLocked: Bool) -> MacContext {
         let now = Date()
         let stamp = clock.string(from: now)
@@ -139,7 +127,6 @@ private final class ContextSessionDelegate: NSObject, URLSessionTaskDelegate {
         value.appId = Self.trimmed(app.bundleIdentifier, max: 255)
         value.windowTitle = Self.title(for: app.processIdentifier)
         value.desktop = DesktopNumber.current()
-        value.recentInputAt = recentInput(at: now)
         return value
     }
 

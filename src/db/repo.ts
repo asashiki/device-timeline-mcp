@@ -140,10 +140,7 @@ export class Repository {
   }
 
   liveBodyNow() {
-    const now = new Date();
-    const mac = this.macContext.read(now.getTime());
-    const input = mac.recentInputAt && mac.receivedAt ? {observedAt:mac.recentInputAt,receivedAt:mac.receivedAt} : null;
-    return readLiveHealth(this.db, LIVE_HEALTH_DEVICE_ID, now, input);
+    return readLiveHealth(this.db, LIVE_HEALTH_DEVICE_ID);
   }
 
   bodyRange(from: string, to: string, now: Date) {

@@ -110,8 +110,7 @@ function showBody(body) {
   const mixed=last?.asleepMinutesSource && last.asleepMinutesSource!==last.source;
   const state = {asleep:'睡着了', awake:'醒着', likely_awake:'推测清醒', likely_asleep:'推测睡着', unknown:'手环还没判出来'}[now.state] || '手环还没判出来';
   let note = '等手环传回睡眠状态';
-  if (now.reason === 'recent_device_input') note = '最近有键鼠操作';
-  else if (now.state === 'likely_awake') note = '手环记录到连续两分钟走动';
+  if (now.state === 'likely_awake') note = '手环记录到连续两分钟走动';
   else if (now.reason === 'personal_sleep_pattern') note = '近 15 分钟的心率和步数符合你以往睡眠时的记录';
   else if (now.state === 'likely_asleep') note = '手环记录的睡眠时间仍在增加';
   else if (now.state === 'asleep' || now.state === 'awake') note = '手环报告';

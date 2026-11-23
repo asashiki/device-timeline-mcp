@@ -12,7 +12,7 @@ Install Apple's Command Line Tools if `swiftc` is missing. The installer also us
 
 On first install, enter your collector's HTTPS URL and the token assigned to this Mac. The installer stores the token in `~/.config/hibi/mac.json` with owner-only permissions. It installs `~/Applications/Hibi Mac.app` and starts a user LaunchAgent. Existing settings and the previous app are retained. Open **Hibi Mac** from the menu bar to pause or resume recording.
 
-Optional: add `"toolNames": ["Calendar", "Notes"]` to your configuration to show launch buttons for installed apps. If you want current window titles, choose **允许读取窗口标题** in the app and enable Hibi Mac in System Settings. The title, recent input timestamps and desktop number go to the private current context endpoint. A named desktop is omitted when Mission Control cannot identify it. Music and Spotify playback use their local player notifications.
+Optional: add `"toolNames": ["Calendar", "Notes"]` to your configuration to show launch buttons for installed apps. If you want current window titles, choose **允许读取窗口标题** in the app and enable Hibi Mac in System Settings. The title and desktop number go to the private current context endpoint. A named desktop is omitted when Mission Control cannot identify it. Music and Spotify playback use their local player notifications.
 
 ```sh
 ./install.sh --build-only /tmp/hibi-preview
