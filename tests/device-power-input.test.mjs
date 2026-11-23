@@ -9,7 +9,7 @@ import {DeviceAuth} from '../dist/device-auth.js';
 import {registerRoutes} from '../dist/routes.js';
 import {registerConsoleBody} from '../dist/console-body.js';
 
-test('click time feeds the same authenticated body reads as the private Notion bridge; polls and locks do not',async t=>{
+test("Mac clicks and locks never determine the wearer's sleep state",async t=>{
   const db=new DatabaseSync(':memory:');runMigrations(db);
   const repo=new Repository(db,120), app=Fastify();t.after(async()=>{await app.close();db.close();});
   const mac={deviceId:'mac-laptop',deviceName:'Mac',platform:'macos',token:'write'};
@@ -28,14 +28,15 @@ test('click time feeds the same authenticated body reads as the private Notion b
   const captured=stamp(-60000);
   assert.equal((await post({state:'active',sampledAt:stamp(-5000),recentInputAt:captured,windowTitle:'private-title',appName:'secret-app'})).statusCode,202);
   for(const b of [await read(body),await read(token),await web()]){
-    assert.equal(b.currentSleep.state,'likely_awake');assert.equal(b.currentSleep.reason,'recent_device_input');
-    assert.equal(b.currentSleep.sampledAt,captured);
+    assert.equal(b.currentSleep.state,'unknown');
+    assert.equal(b.currentSleep.sampledAt,null);
     assert.doesNotMatch(JSON.stringify(b.currentSleep),/private-title|secret-app/);
   }
-  assert.equal((await post({state:'active',sampledAt:stamp(-4000),recentInputAt:stamp(-125000)})).statusCode,400);
+  assert.equal((await post({state:'active',sampledAt:stamp(-4000),recentInputAt:stamp(-125000)})).statusCode,202);
   assert.equal((await post({state:'idle',sampledAt:stamp(-3000),recentInputAt:stamp(-5000)})).statusCode,400);
   db.prepare("INSERT INTO band_sleep_observations(device_id,session_start,observed_at,state,origin,time_basis,received_at) VALUES('android-phone','',?,'asleep','band_basic_status','phone_observed',?)").run(stamp(-65000),stamp(-2000));
-  assert.equal((await read(token)).currentSleep.reason,'device_input_conflicts_with_sleep');
+  assert.equal((await read(token)).currentSleep.state,'asleep');
+  assert.equal((await web()).currentSleep.reason,'explicit_device_state');
   db.exec('DELETE FROM band_sleep_observations');
   db.prepare('INSERT INTO band_sleep VALUES(?,?,?,?,?)').run('android-phone',stamp(-3600000),stamp(-30000),50,stamp(-2000));
   assert.equal((await web()).currentSleep.state,'unknown');

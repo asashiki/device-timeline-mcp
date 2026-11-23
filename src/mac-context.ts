@@ -5,7 +5,7 @@ export const MAC_CONTEXT_TTL_MS = 75_000;
 const sampledAt = z.string().max(40).datetime({ offset: true });
 export const macSnapshot = z.union([
   z.object({
-    sampledAt, state: z.literal("active"), recentInputAt: sampledAt.optional(),
+    sampledAt, state: z.literal("active"), recentInputAt: sampledAt.optional().transform(() => undefined),
     appName: z.string().trim().min(1).max(160).optional(),
     appId: z.string().trim().min(1).max(255).optional(),
     windowTitle: z.string().trim().min(1).max(300).optional(),
@@ -28,10 +28,6 @@ export class MacContext {
   record(snapshot: Snapshot, now = Date.now()): boolean {
     const sampled = Date.parse(snapshot.sampledAt);
     if (!Number.isFinite(sampled) || sampled > now + 5000) return false;
-    if (snapshot.state === "active" && snapshot.recentInputAt) {
-      const input = Date.parse(snapshot.recentInputAt);
-      if (!Number.isFinite(input) || input > sampled || sampled - input > 120_000 || input > now) return false;
-    }
     if (sampled < this.sampled || now - sampled >= MAC_CONTEXT_TTL_MS) return true;
     if (sampled === this.sampled && snapshot.state === "active") return true;
     this.clear();
@@ -64,8 +60,6 @@ export class MacContext {
       appId: active?.appId ?? null,
       windowTitle: active?.windowTitle ?? null,
       desktop: active?.desktop ?? null,
-      recentInputAt: active?.recentInputAt && now - Date.parse(active.recentInputAt) <= 120_000
-        ? new Date(active.recentInputAt).toISOString() : null,
     };
   }
 }

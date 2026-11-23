@@ -159,27 +159,8 @@ function withMovementEvidence(db: DatabaseSync, deviceId: string, now: Date, sle
     sessionStart:null,previousSampleAt:previous.recorded_at,origin:'band_minute_steps',timeBasis:'device_sample' as const};
 }
 
-type RecentInput = { observedAt: string; receivedAt: string };
-
-function withInputEvidence(status: ReturnType<typeof withMovementEvidence>, input: RecentInput | null, now: Date, sleep?: SleepRow) {
-  if (!input || status.state === 'awake' || status.state === 'likely_awake') return status;
-  const at = Date.parse(input.observedAt), received = Date.parse(input.receivedAt);
-  if (!Number.isFinite(at) || !Number.isFinite(received) || at > received || received > now.getTime()
-      || now.getTime() - at > 120_000) return status;
-  const overlap = sleep && Date.parse(sleep.started_at) <= at && at <= Date.parse(sleep.ended_at);
-  if (status.state === 'asleep' || status.state === 'likely_asleep') {
-    if (status.sampledAt && Date.parse(status.sampledAt) > at) return status;
-    return {...status,state:'unknown' as const,confidence:'unknown' as const,reason:'device_input_conflicts_with_sleep'};
-  }
-  if (overlap || status.reason === 'walking_conflicts_with_sleep_evidence' ||
-      (status.sampledAt && now.getTime() - Date.parse(status.sampledAt) <= FRESH_MS && status.state === 'unknown')) return status;
-  return {...status,state:'likely_awake' as const,reason:'recent_device_input',sampledAt:input.observedAt,
-    receivedAt:input.receivedAt,...age(input.observedAt,now.getTime()),origin:'device_input',
-    timeBasis:'device_sample' as const,sessionStart:null,previousSampleAt:null};
-}
-
 /** Exposes direct, private samples for the credential's bound phone. The caller owns HTTP authentication. */
-export function readLiveHealth(db: DatabaseSync, deviceId: string, now = new Date(), input: RecentInput | null = null) {
+export function readLiveHealth(db: DatabaseSync, deviceId: string, now = new Date()) {
   if (deviceId !== LIVE_HEALTH_DEVICE_ID) throw new Error('Device is outside the live health scope');
   const asOf = now.toISOString();
   const day = shanghaiDate.format(now);
@@ -205,8 +186,8 @@ export function readLiveHealth(db: DatabaseSync, deviceId: string, now = new Dat
       ORDER BY ended_at DESC, started_at DESC LIMIT 1`).get(deviceId, asOf, asOf, asOf) as SleepRow | undefined;
   const supplement = completed?.asleep_minutes === null && completed.import_received_at !== null &&
     completed.import_received_at <= asOf ? completed.import_minutes : null;
-  const primary = withInputEvidence(withMovementEvidence(db, deviceId, now,
-    currentSleep(db, deviceId, asOf, completed?.ended_at), completed), input, now, completed);
+  const primary = withMovementEvidence(db, deviceId, now,
+    currentSleep(db, deviceId, asOf, completed?.ended_at), completed);
   const freshConflict = primary.reason === 'walking_conflicts_with_sleep_evidence' ||
     (primary.sampledAt && age(primary.sampledAt,now.getTime()).confidence === 'fresh');
   const pattern = primary.state === 'unknown' && !freshConflict
