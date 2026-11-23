@@ -27,7 +27,6 @@ NAMES = {MAC_DEVICE: 'Mac', HEALTH_DEVICE: '安卓手机', 'ios-phone': 'iPhone'
          'android-tablet': '安卓平板', 'windows-pc': 'Windows'}
 STATES = {'active': '活跃', 'idle': '空闲', 'locked': '已锁屏', 'paused': '已暂停',
           'stale': '当前未知', 'unknown': '当前未知'}
-SLEEP = {'awake': '清醒', 'asleep': '睡眠中', 'likely_asleep': '推测睡着', 'likely_awake': '推测清醒', 'unknown': '手环还没判出来'}
 
 
 def stamp(text):
@@ -97,32 +96,12 @@ def render(body):
     count = steps.get('steps')
     lines.append(f'今日已记录 {count} 步 · 最近采样 {seen(steps.get("lastSampleAt"), checked)}'
                  if type(count) is int and count >= 0 else '今日步数　尚无记录')
-    checks = body.get('sleepRecordChecks') or {}
-    observations = checks.get('recent') or []
-    last = observations[0] if observations else {}
-    record = last.get('record') or {}
-    poll, sample = stamp(last.get('checkedAt')), stamp(checks.get('latestBandSampleAt'))
-    unchanged = (sleep.get('state') == 'unknown' and sleep.get('reason') == 'no_explicit_sleep_state_observation'
-                 and last.get('change') == 'unchanged' and record.get('end') and record.get('end') == night.get('endedAt')
-                 and record.get('start') == night.get('startedAt') and poll and sample
-                 and 0 <= (checked-poll).total_seconds() < 360 and 0 <= (poll-sample).total_seconds() <= 300)
-    sleep_label = ('还没记录到新一觉（' + poll.astimezone(LOCAL).strftime('%H:%M') + ' 核对）'
-                   if unchanged else SLEEP.get(sleep.get('state'), '手环还没判出来'))
-    if (sleep.get('state')=='unknown' and sleep.get('reason')=='no_explicit_sleep_state_observation'
-            and last.get('change')=='unchanged' and record.get('end') and poll
-            and 0 <= (checked-poll).total_seconds() < 360 and not unchanged):
-        sleep_label='等待手环同步' + ('，最近的手环样本 '+sample.astimezone(LOCAL).strftime('%H:%M') if sample else '')
-    lines.append('此刻睡眠　' + sleep_label
-                 + ('（心率和步数符合以往睡眠记录）' if sleep.get('reason') == 'personal_sleep_pattern' else '（最近有连续步行）' if sleep.get('state') == 'likely_awake' else '')
-                 + (' · ' + seen(sleep['sampledAt'], checked) if stamp(sleep.get('sampledAt')) else ''))
-    record_change = {'baseline':'已记下当前记录','empty':'还没有睡眠记录','unchanged':'和上次一样',
-                     'new':'收到新一觉','progress':'同一觉仍在增长','completed':'这段睡眠已结束','corrected':'上一觉的记录有更新'}
-    if poll and last.get('change') in record_change:
-        detail = poll.astimezone(LOCAL).strftime('%H:%M') + ' 核对睡眠记录：' + record_change[last['change']]
-        change_at = stamp(checks.get('lastChangedAt'))
-        if change_at and last['change']=='unchanged':
-            detail += ' · 上次变化 ' + change_at.astimezone(LOCAL).strftime('%m-%d %H:%M')
-        lines.append(detail)
+    sleep_label = '睡了' if sleep.get('state') in ('asleep','likely_asleep') else '醒着'
+    samples = [stamp(t) for t in (hr.get('sampledAt'), steps.get('lastSampleAt'), sleep.get('sampledAt'),
+                                  (body.get('sleepRecordChecks') or {}).get('latestBandSampleAt')) if t]
+    latest = max((t for t in samples if t), default=None)
+    lines.append('现在睡了吗　' + sleep_label +
+                 (' · 手环数据 ' + latest.astimezone(LOCAL).strftime('%m-%d %H:%M') if latest else ''))
     begin, end = stamp(night.get('startedAt')), stamp(night.get('endedAt'))
     if begin and end:
         minutes = night.get('asleepMinutes')

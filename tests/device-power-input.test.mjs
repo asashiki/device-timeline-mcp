@@ -24,11 +24,12 @@ test("Mac clicks and locks never determine the wearer's sleep state",async t=>{
   const cookie=login.headers['set-cookie'].split(';')[0];
   const web=async()=>(await app.inject({url:'/api/console/body',headers:{cookie}})).json();
   assert.equal((await post({state:'active',sampledAt:stamp(-8000)})).statusCode,202);
-  assert.equal((await read(token)).currentSleep.state,'unknown');
+  assert.equal((await read(token)).currentSleep.state,'awake');
   const captured=stamp(-60000);
   assert.equal((await post({state:'active',sampledAt:stamp(-5000),recentInputAt:captured,windowTitle:'private-title',appName:'secret-app'})).statusCode,202);
   for(const b of [await read(body),await read(token),await web()]){
-    assert.equal(b.currentSleep.state,'unknown');
+    assert.equal(b.currentSleep.state,'awake');
+    assert.equal(b.currentSleep.evidenceState,'unknown');
     assert.equal(b.currentSleep.sampledAt,null);
     assert.doesNotMatch(JSON.stringify(b.currentSleep),/private-title|secret-app/);
   }
@@ -39,10 +40,10 @@ test("Mac clicks and locks never determine the wearer's sleep state",async t=>{
   assert.equal((await web()).currentSleep.reason,'explicit_device_state');
   db.exec('DELETE FROM band_sleep_observations');
   db.prepare('INSERT INTO band_sleep VALUES(?,?,?,?,?)').run('android-phone',stamp(-3600000),stamp(-30000),50,stamp(-2000));
-  assert.equal((await web()).currentSleep.state,'unknown');
+  assert.equal((await web()).currentSleep.state,'awake');
   db.exec('DELETE FROM band_sleep');
   assert.equal((await post({state:'locked',sampledAt:stamp(-1000)})).statusCode,202);
-  assert.equal((await web()).currentSleep.state,'unknown');
+  assert.equal((await web()).currentSleep.state,'awake');
 });
 
 test('public and private device summaries retain zero and false, and battery-free iPhone heartbeats preserve source time',async t=>{
