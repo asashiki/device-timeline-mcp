@@ -1,3 +1,5 @@
+import { startSleepChecks } from './db/sleep-checks.js';
+import { LIVE_HEALTH_DEVICE_ID } from './db/live-health.js';
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -104,6 +106,7 @@ async function main() {
   }
 
   await app.listen({ port: config.port, host: config.host });
+  startSleepChecks(db, LIVE_HEALTH_DEVICE_ID);
   startRetention(repo, config.retentionDays);
   console.log(`[device-timeline-mcp] listening on http://${config.host}:${config.port}`);
   console.log(`[device-timeline-mcp] ${config.deviceTokens.length} device token(s) loaded`);

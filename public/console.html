@@ -108,6 +108,17 @@ function showBody(body) {
   const coverage=Number.isFinite(minuteCount)&&minuteCount>0?'已覆盖 '+numberFormat.format(minuteCount)+' 分钟':'尚无覆盖记录';
   const source=last?sleepSource(last.source):'';
   const mixed=last?.asleepMinutesSource && last.asleepMinutesSource!==last.source;
+  const check = body.sleepRecordChecks?.recent?.[0];
+  const checkTime = check && Date.parse(check.checkedAt);
+  const sampleTime = Date.parse(body.sleepRecordChecks?.latestBandSampleAt);
+  const recentCheck = Number.isFinite(checkTime) && Date.parse(body.asOf)-checkTime < 6*60000;
+  const recentBand = recentCheck && checkTime-sampleTime >= 0 && checkTime-sampleTime <= 5*60000;
+  const sameCompleted = check?.change==='unchanged' && check.record?.start===last?.startedAt
+    && check.record?.end && check.record.end===last?.endedAt;
+  const noNewSleep = now.state==='unknown' && now.reason==='no_explicit_sleep_state_observation'
+    && sameCompleted && recentBand;
+  const waitingForBand = now.state==='unknown' && now.reason==='no_explicit_sleep_state_observation'
+    && sameCompleted && recentCheck && !recentBand;
   const state = {asleep:'睡着了', awake:'醒着', likely_awake:'推测清醒', likely_asleep:'推测睡着', unknown:'手环还没判出来'}[now.state] || '手环还没判出来';
   let note = '等手环传回睡眠状态';
   if (now.state === 'likely_awake') note = '手环记录到连续两分钟走动';
@@ -122,8 +133,22 @@ function showBody(body) {
     metric('今日步数',Number.isFinite(steps.steps)?numberFormat.format(steps.steps)+' 步':'暂无记录',coverage,steps.lastSampleAt?'截至 '+clock(steps.lastSampleAt):''),
     metric('上次睡眠',last?sleepMinutes(last.asleepMinutes):'暂无记录',last?measuredAt(last.startedAt)+' 至 '+measuredAt(last.endedAt):'',
       last?(Number.isFinite(last.asleepMinutes)?'实睡 · ':'')+source+(mixed?'；时长来自'+sleepSource(last.asleepMinutesSource):''):''),
-    metric('现在睡了吗',state,note,now.sampledAt?measuredAt(now.sampledAt):'')
+    metric('现在睡了吗',noNewSleep?'还没记录到新一觉':waitingForBand?'等待手环同步':state,
+      noNewSleep?'上次睡眠结束于 '+measuredAt(last.endedAt):waitingForBand?
+        (Number.isFinite(sampleTime)?'最近的手环样本：'+measuredAt(body.sleepRecordChecks.latestBandSampleAt):'本轮没有新的手环样本'):note,
+      noNewSleep?'两次对比：'+clock(body.sleepRecordChecks.recent[1]?.checkedAt ?? check.checkedAt)+'、'+clock(check.checkedAt):
+        now.sampledAt?measuredAt(now.sampledAt):'')
   );
+  if (recentCheck) {
+    const changes = {baseline:'已记下当前记录',empty:'还没有睡眠记录',unchanged:'和上次一样',new:'收到新一觉',progress:'同一觉仍在增长',completed:'这段睡眠已结束',corrected:'上一觉的记录有更新'};
+    const label = changes[check.change];
+    if (label) {
+      const line = document.createElement('small'); line.textContent = clock(check.checkedAt)+' 核对：'+label;
+      const lastChange = body.sleepRecordChecks.lastChangedAt;
+      if (lastChange && check.change==='unchanged') line.textContent += ' · 上次变化 '+measuredAt(lastChange);
+      $('health').children[2].append(line);
+    }
+  }
   bodyAuthorized=true;
   $('body-gate').hidden=true;
   $('body-hide').hidden=false;

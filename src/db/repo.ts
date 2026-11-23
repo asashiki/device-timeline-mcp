@@ -1,3 +1,4 @@
+import { readSleepChecks } from './sleep-checks.js';
 import type { DatabaseSync } from "node:sqlite";
 import { onlineWindowSeconds, type DeviceToken, type Platform } from "../config.js";
 import { dayRangeUtc, toUtcIso } from "../time.js";
@@ -140,7 +141,7 @@ export class Repository {
   }
 
   liveBodyNow() {
-    return readLiveHealth(this.db, LIVE_HEALTH_DEVICE_ID);
+    return { ...readLiveHealth(this.db, LIVE_HEALTH_DEVICE_ID), sleepRecordChecks:readSleepChecks(this.db, LIVE_HEALTH_DEVICE_ID) };
   }
 
   bodyRange(from: string, to: string, now: Date) {

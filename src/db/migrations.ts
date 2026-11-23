@@ -163,6 +163,11 @@ const MIGRATIONS: Array<(db: DatabaseSync) => void> = [
       CREATE INDEX idx_import_sleep_receipts ON historical_sleep_imports(received_at, started_at, ended_at);
     `);
   },
+  // One row per actual five-minute check; callers can see which sleep record was present.
+  (db) => db.exec(`CREATE TABLE private_sleep_checks (
+    device_id TEXT NOT NULL, slot INTEGER NOT NULL, checked_at TEXT NOT NULL,
+    record_json TEXT, change TEXT NOT NULL, last_changed_at TEXT, latest_sample_at TEXT,
+    PRIMARY KEY(device_id,slot)) WITHOUT ROWID;`),
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;
