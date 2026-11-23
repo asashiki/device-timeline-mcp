@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+"""查询 Hibi 当前状态，或指定时段的身体记录。"""
+
+import argparse
+from datetime import datetime, timezone
+import json
+import os
+from pathlib import Path
+import stat
+import sys
+from urllib import error, request
+from urllib.parse import urlencode
+from zoneinfo import ZoneInfo
+
+
+from hibi_settings import origin
+CONFIG = Path.home() / ".config/hibi"
+
+
+def timestamp(text):
+    try:
+        value = datetime.fromisoformat(text[:-1] + "+00:00" if text.endswith("Z") else text)
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=ZoneInfo("Asia/Shanghai"))
+        return value.astimezone(timezone.utc)
+    except (ValueError, OverflowError):
+        raise argparse.ArgumentTypeError("请填写日期或日期时间，如 2020-01-15 13:00。") from None
+
+
+def endpoint(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False,
+        epilog="省略时区按北京时间，只有日期时按当天 00:00。")
+    parser.add_argument("--from", dest="starts", action="append", type=timestamp, metavar="时间", help="起始时间")
+    parser.add_argument("--to", dest="ends", action="append", type=timestamp, metavar="时间", help="结束时间")
+    args = parser.parse_args(argv)
+    if not args.starts and not args.ends:
+        return origin("HIBI_CONSOLE_ORIGIN") + "/api/agent/" + "body-now"
+    if len(args.starts or []) != 1 or len(args.ends or []) != 1:
+        parser.error("--from 和 --to 需要各填写一次。")
+    start, end = args.starts[0], args.ends[0]
+    if start >= end:
+        parser.error("结束时间必须晚于起始时间。")
+    query = urlencode({key: value.isoformat().replace("+00:00", "Z")
+                       for key, value in (("from", start), ("to", end))})
+    return origin("HIBI_CONSOLE_ORIGIN") + "/api/agent/" + "body-range?" + query
+
+
+def read_token():
+    # Explicit credentials come first so a body-only caller stays body-only.
+    token = os.environ.get("HIBI_CONTEXT_READ_TOKEN", os.environ.get("HIBI_BODY_READ_TOKEN"))
+    if token is None:
+        for name in ("context-read-token", "body-read-token"):
+            try:
+                fd = os.open(CONFIG / name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+                break
+            except FileNotFoundError:
+                continue
+            except OSError:
+                raise ValueError("无法打开本机 Hibi 只读凭据。") from None
+        else:
+            raise ValueError("未配置 Hibi 只读凭据。")
+        with os.fdopen(fd, "rb") as stream:
+            info = os.fstat(stream.fileno())
+            if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+                    or stat.S_IMODE(info.st_mode) != 0o600):
+                raise ValueError("Hibi 凭据需要是本人所有、权限为 0600 的普通文件。")
+            raw = stream.read(4097)
+        if len(raw) > 4096:
+            raise ValueError("Hibi 只读凭据格式异常。")
+        try:
+            token = raw.decode("ascii").rstrip("\r\n")
+        except UnicodeDecodeError:
+            raise ValueError("Hibi 只读凭据格式异常。") from None
+    if not token or len(token) > 4096 or any(not 33 <= ord(c) <= 126 for c in token):
+        raise ValueError("Hibi 只读凭据格式异常。")
+    return token
+
+
+class NoRedirect(request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def main():
+    query = request.Request(endpoint(), headers={
+        "Authorization": "Bearer " + read_token(),
+        "Accept": "application/json",
+        "User-Agent": "Hibi-Now/1.0",
+    })
+    try:
+        with request.build_opener(NoRedirect()).open(query, timeout=15) as res:
+            body = res.read(1024 * 1024 + 1)
+            if res.status != 200 or len(body) > 1024 * 1024:
+                raise ValueError("Hibi 返回了无法读取的响应。")
+    except error.HTTPError as exc:
+        raise ValueError(f"Hibi 返回 HTTP {exc.code}。") from None
+    except (error.URLError, TimeoutError, OSError):
+        raise ValueError("无法连接 Hibi。") from None
+    try:
+        snapshot = json.loads(body)
+    except (ValueError, UnicodeError):
+        raise ValueError("Hibi 返回的数据不是有效的 JSON。") from None
+    if not isinstance(snapshot, dict):
+        raise ValueError("Hibi 返回的 JSON 格式异常。")
+    print(json.dumps(snapshot, ensure_ascii=False, indent=2))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        sys.exit(1)

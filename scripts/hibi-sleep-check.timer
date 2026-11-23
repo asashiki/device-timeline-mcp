@@ -1,0 +1,11 @@
+[Unit]
+Description=Collect live sleep evidence every five minutes
+
+[Timer]
+OnCalendar=*-*-* *:00/5:00 Asia/Shanghai
+AccuracySec=10s
+Persistent=true
+Unit=hibi-sleep-check.service
+
+[Install]
+WantedBy=timers.target

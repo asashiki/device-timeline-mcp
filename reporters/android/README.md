@@ -1,34 +1,21 @@
 # Android reporter
 
-A minimal, timeline-only Android app: every ~30s it reads the **foreground app**
-(via Usage Access) + battery/network and `POST`s to your collector's
-`/api/devices/report`. No chat, voice, health, location, or music — just the
-device timeline.
+Hibi reports Android foreground activity, battery level and network type to your collector. The reporting interval defaults to 30 seconds. Health Connect and supported Xiaomi band collection are optional.
 
 It runs as a `specialUse` foreground service with an AlarmManager watchdog and a
 boot receiver, tuned for aggressive OEM ROMs (MIUI/HyperOS, vivo/OriginOS, etc.).
 
-## Build
+## Build and install
 
-Open `reporters/android` in Android Studio (Giraffe+), or from the CLI:
+Use the Android APK from the release for this source revision. Its application ID is `com.devicetimeline.agent`. Android accepts an upgrade when the package name and signing certificate match the existing installation. A file ending in `-debug.apk` uses the CI runner's temporary debug certificate. Keep your own signing key for repeatable updates.
 
-```bash
-cd reporters/android
-gradle wrapper          # one-time: generate the gradle wrapper jar/scripts
-./gradlew assembleRelease
-# unsigned APK → app/build/outputs/apk/release/
+For a local build, use JDK 17 or 21, Gradle 8.11.1 and Android SDK Platform 36. From this directory run:
+
+```sh
+gradle :app:assembleDebug
 ```
 
-> The wrapper **jar** is not committed (binary). `gradle wrapper` regenerates it
-> using the version pinned in `gradle/wrapper/gradle-wrapper.properties`.
-> Android Studio does this automatically on first sync.
-
-Optional signing for a stable update key (so reinstalls don't uninstall first):
-
-```bash
-./gradlew assembleRelease \
-  -PkeystorePath=/abs/path/key.jks -PkeystorePassword=… -PkeyAlias=… -PkeyPassword=…
-```
+Open `app/build/outputs/apk/debug/app-debug.apk` on the phone and confirm installation in Android. The CI workflow builds the same app and includes the band module by default. For signed release builds, configure the four signing secrets named in the workflow. Android 9 or later supports the activity reporter. The band reader requires Android 12 or later.
 
 ## Configure (on the device)
 
@@ -66,3 +53,13 @@ their samples separately and the console shows them as two cards.
 
 Friendly names + status phrases are resolved **server-side** from
 `config/app-labels.json`, so you don't configure per-app overrides on the device.
+
+## Xiaomi Smart Band 9 Pro
+
+This experimental reader targets the Chinese `miwear.watch.n67cn` model. Pair your own band with Android first. In **手环监测**, choose **导入我的手环配对文件** and select a JSON file exported from your own authorized pairing setup. Supply `model` (`miwear.watch.n67cn`), `mac` (Bluetooth address) and `authKey` (the 32 hexadecimal digits for that pairing). Hibi validates the file and encrypts its contents using Android Keystore. The source file stays wherever you saved it.
+
+Save the collector URL and device token in **连接**. Grant **附近设备** when prompted and turn on **开启手环监测**. Hibi polls roughly every five minutes, keeps measurements locally until the collector acknowledges them, and shows their measurement times. Some firmware returns historical sleep after waking. A missing or expired sleep signal appears as unknown.
+
+## License and corresponding source
+
+The combined Android app is distributed under AGPL-3.0-only. The original Hibi activity reporter components retain their MIT notices. The linked `:healthapp-core` and `:hibi-band` modules, their modifications, build scripts, and the application source are included under `reporters/android/` in the same release tag. The APK contains the AGPL license and upstream attribution. See [HealthAPP source and revision](healthapp-core/UPSTREAM.md) and [the license](hibi-band/src/main/assets/hibi-band/LICENSE-AGPL-3.0.txt).

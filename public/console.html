@@ -1,185 +1,237 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Hibi 日々 · Console</title>
-<style>
-  :root {
-    color-scheme: dark;
-    --bg: #0B0D14; --elev: #14161F; --card: #1A1D27; --card-hi: #22252F;
-    --border: rgba(232,226,212,.08); --border-hi: rgba(232,226,212,.15);
-    --text: #E8E2D4; --dim: #8C8E96; --faint: #565862;
-    --warm: #D89870; --cool: #7FA8B5; --red: #C97064; --green: #85B58E;
-  }
-  * { box-sizing: border-box; }
-  html, body { margin: 0; background: var(--bg); }
-  body { color: var(--text); padding: 0 20px 72px;
-    font: 14px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif; }
-  .wrap { max-width: 940px; margin: 0 auto; }
-  header { text-align: center; padding: 40px 0 8px; }
-  .eyebrow { font-size: 11px; letter-spacing: .3em; text-transform: uppercase; color: var(--warm); margin: 0 0 8px; }
-  h1 { font-size: 26px; margin: 0 0 4px; font-weight: 650; letter-spacing: .01em; }
-  .lede { color: var(--faint); font-size: 12.5px; margin: 0; }
-  .bar { display: flex; gap: 8px; align-items: center; justify-content: center; flex-wrap: wrap; margin: 18px 0 4px; }
-  input { background: var(--elev); border: 1px solid var(--border-hi); color: var(--text);
-    border-radius: 8px; padding: 7px 11px; min-width: 220px; text-align: center; }
-  input::placeholder { color: var(--faint); }
-  button { background: transparent; border: 1px solid var(--border-hi); color: var(--text);
-    border-radius: 8px; padding: 7px 16px; cursor: pointer; transition: border-color .15s, background .15s, color .15s; font: inherit; }
-  button:hover { border-color: var(--warm); color: var(--warm); }
-  .muted { color: var(--dim); font-size: 12px; }
-  h2 { font-size: 11px; letter-spacing: .2em; text-transform: uppercase; color: var(--dim);
-    font-weight: 600; margin: 34px 0 13px; text-align: center; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
-  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 15px; }
-  .card .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-  .name { font-weight: 600; } .plat { font-size: 10px; letter-spacing: .12em; color: var(--faint); text-transform: uppercase; }
-  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
-  .on { background: var(--green); box-shadow: 0 0 7px var(--green); } .off { background: var(--faint); }
-  .live { margin: 10px 0 5px; } .meta { font-size: 12px; color: var(--dim); }
-  .hcard { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
-  .hcard .hl { font-size: 11px; letter-spacing: .1em; color: var(--cool); text-transform: uppercase; }
-  .hcard .hv { font-size: 24px; font-weight: 650; margin-top: 4px; }
-  .hcard .hu { font-size: 12px; color: var(--dim); font-weight: 400; margin-left: 3px; }
-  .hcard .hm { font-size: 11px; color: var(--faint); margin-top: 5px; }
-  /* device filter chips */
-  .chips { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 14px; }
-  .chip { padding: 5px 14px; border-radius: 999px; border: 1px solid var(--border-hi); color: var(--dim);
-    font-size: 12.5px; cursor: pointer; transition: all .15s; }
-  .chip:hover { color: var(--text); border-color: var(--text); }
-  .chip.active { background: var(--warm); border-color: var(--warm); color: var(--bg); font-weight: 600; }
-  .panel { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 6px 18px; }
-  table { width: 100%; border-collapse: collapse; }
-  td, th { text-align: left; padding: 8px; border-bottom: 1px solid var(--border); font-size: 13px; }
-  th { color: var(--dim); font-weight: 600; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
-  tr:last-child td { border-bottom: 0; }
-  .tl { font-size: 13px; padding: 9px 2px; border-bottom: 1px solid var(--border); display: flex; gap: 10px; align-items: baseline; }
-  .tl:last-child { border-bottom: 0; }
-  .tl .t { color: var(--cool); font-variant-numeric: tabular-nums; flex-shrink: 0; }
-  .tl .body { flex: 1; } .tl .dev { color: var(--faint); font-size: 11px; }
-  .err { color: var(--red); padding: 14px; } .empty { color: var(--faint); font-style: italic; padding: 16px; text-align: center; }
-</style>
-</head>
-<body>
-<div class="wrap">
-  <header>
-    <p class="eyebrow">Hibi · device timeline</p>
-    <h1>Hibi 日々</h1>
-    <div class="lede">只读看板 · 直连本服务公开接口 · 时间按设备时区展示</div>
-  </header>
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><script>
+let hibiConfirmation = null;
+if (location.hash.startsWith("#hibi-confirm=")) {
+  hibiConfirmation = location.hash.slice("#hibi-confirm=".length);
+  history.replaceState(null, "", location.pathname + location.search + "#health-section");
+}
+</script><title>Hibi 日々 · 我的时间线</title><style>
+:root{color-scheme:light;--bg:#f5f3ed;--paper:#fffefa;--ink:#292b29;--muted:#777b72;--line:#e5e4da;--accent:#a34f3f;--green:#4e7560}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC",sans-serif}button,input,select{font:inherit}button,a,input,select{outline-offset:4px}button{cursor:pointer}button:disabled{opacity:.5;cursor:default}a{color:inherit}.layout{max-width:1440px;margin:auto;display:grid;grid-template-columns:200px minmax(0,1fr);min-height:100vh}.sidebar{padding:38px 25px;border-right:1px solid var(--line);position:sticky;top:0;height:100vh;display:flex;flex-direction:column}.brand{font-family:Georgia,serif;font-size:34px;line-height:1.1}.brand small{font-family:inherit;color:var(--accent);font-size:18px;margin-left:7px}.caption{font-size:11px;letter-spacing:2px;color:var(--muted);margin-top:12px}.nav{margin-top:48px;display:grid;gap:8px}.nav a{text-decoration:none;padding:11px 13px;border-radius:8px;color:var(--muted)}.nav a:first-child{background:#e9e7de;color:var(--ink);font-weight:600}.sidefoot{margin-top:auto;font-size:12px;color:var(--muted)}main{padding:36px 42px 64px;min-width:0}.topline{display:flex;align-items:center;justify-content:space-between;color:var(--muted);font-size:12px}.refresh{background:transparent;border:1px solid var(--line);padding:6px 13px;border-radius:20px;color:var(--ink)}h1{font-size:32px;font-weight:550;letter-spacing:-1px;line-height:1.3;margin:28px 0 7px}.intro{color:var(--muted);margin:0 0 25px}.overview{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1px;border:1px solid var(--line);background:var(--line);border-radius:12px;overflow:hidden;margin-bottom:30px}.stat{background:var(--paper);padding:19px 22px}.stat .label{color:var(--muted);font-size:12px}.stat .value{font-size:27px;font-weight:500;margin:4px 0}.stat .note{font-size:11px;color:var(--muted)}.sectionhead{display:flex;align-items:center;justify-content:space-between;margin:26px 0 12px;gap:12px}h2{font-size:16px;font-weight:600;margin:0}.hint{font-size:12px;color:var(--muted)}.devices{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}.device{border:1px solid var(--line);border-radius:11px;background:var(--paper);padding:17px;text-align:left;min-height:140px;color:var(--ink)}.device:hover,.device.selected{border-color:var(--accent)}.devtop{display:flex;align-items:center;justify-content:space-between}.platform{font-size:11px;color:var(--muted)}.dot{height:6px;width:6px;display:inline-block;border-radius:50%;background:#b7bbb2;margin-right:5px}.dot.on{background:var(--green)}.devname{font-size:13px;font-weight:600;margin:13px 0 5px}.devapp{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.devtime{font-size:11px;color:var(--muted);margin-top:10px}.columns{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(230px,1fr);gap:24px;margin-top:8px}.panel{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:20px}.controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:18px}input,select,.plain{border:1px solid var(--line);border-radius:7px;background:var(--paper);padding:6px 9px;color:var(--ink);min-width:0}select{max-width:180px}.timeline{max-height:610px;overflow:auto;padding-right:7px}.event{display:grid;grid-template-columns:45px 1fr;gap:13px;padding:0 0 19px}.event time{font-size:11px;color:var(--muted);padding-top:2px}.eventbody{position:relative;padding-left:16px;border-left:1px solid var(--line)}.eventbody:before{content:"";position:absolute;left:-3px;top:7px;width:5px;height:5px;border-radius:50%;background:#b17a6c}.eventtitle{font-size:13px}.eventmeta{font-size:11px;color:var(--muted);margin-top:3px}.apps{display:grid;gap:16px}.apphead{display:flex;justify-content:space-between;gap:10px;font-size:12px}.apphead span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.track{height:4px;background:#eeede7;border-radius:5px;margin-top:7px;overflow:hidden}.fill{height:100%;background:#9eaa9a;border-radius:5px}.healthgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}.metric{padding:15px;background:var(--paper);border:1px solid var(--line);border-radius:10px}.metric b{font-size:23px;font-weight:500;display:block;margin:6px 0}.metric span{font-size:11px;color:var(--muted)}.empty{padding:28px 12px;text-align:center;color:var(--muted);font-size:13px}.notice{background:#f1e9df;border:1px solid #e7d9c9;border-radius:9px;padding:13px 16px;color:#825638;font-size:12px;margin-bottom:13px}.storage{display:flex;align-items:center;justify-content:space-between;gap:20px}.storage strong{font-size:17px;font-weight:500}.storage p{font-size:12px;color:var(--muted);margin:5px 0 0}.footer{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:30px}.error{background:#f8e6e1;color:#9b3d30;border-radius:8px;padding:12px;margin:14px 0}[hidden]{display:none!important}details{font-size:11px;color:var(--muted);margin-top:18px}details input{width:100%;margin-top:8px}.badge{font-size:10px;color:var(--green);background:#edf2eb;padding:3px 7px;border-radius:5px}@media(max-width:1050px){.layout{grid-template-columns:150px 1fr}.sidebar{padding:30px 18px}main{padding:30px 25px}.columns{grid-template-columns:1fr}.timeline{max-height:480px}}@media(max-width:650px){.layout{display:block}.sidebar{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line);padding:18px 20px;flex-direction:row;justify-content:space-between;align-items:center}.brand{font-size:26px}.caption,.sidefoot{display:none}.nav{margin:0;display:flex;gap:2px;font-size:12px}.nav a{padding:5px 8px}.nav a:last-child{display:none}main{padding:20px 16px 36px}h1{font-size:27px;margin-top:20px}.stat{padding:13px 10px}.stat .value{font-size:22px}.stat .note{font-size:10px}.devices{grid-template-columns:1fr 1fr;gap:9px}.device{padding:13px;min-height:135px}.panel{padding:15px}.storage{align-items:flex-start;flex-direction:column;gap:12px}.footer{gap:15px}.hint{font-size:11px}.sectionhead{align-items:flex-start}}
 
-  <div class="bar">
-    <input id="base" placeholder="API base（留空=同源）" />
-    <button id="refresh">刷新</button>
-    <span class="muted" id="status"></span>
-  </div>
-
-  <h2>当前设备状态</h2>
-  <div id="devices" class="grid"></div>
-
-  <h2>健康数据 · 近 24 小时</h2>
-  <div id="health" class="grid"></div>
-
-  <h2>活动时间线 · 今日</h2>
-  <div id="chips" class="chips"></div>
-  <div class="panel"><div id="timeline"></div></div>
-
-  <h2>应用使用统计 · 今日</h2>
-  <div class="panel"><div id="summary"></div></div>
+#health-section{scroll-margin-top:16px}.body-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.body-link,.body-authorize{display:inline-block;font:inherit;border-radius:7px;padding:7px 12px;text-decoration:none;cursor:pointer}
+.body-link{background:var(--accent);border:1px solid var(--accent);color:#fff}.body-authorize{background:transparent;border:1px solid var(--line);color:var(--ink)}
+.body-gate{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}.body-alt{flex-basis:100%;margin:0}.body-alt .plain{margin-top:6px}.body-gate p{margin:0;color:var(--muted);font-size:13px}
+#body-access-message{margin:8px 0 0;font-size:12px;color:var(--muted)}#body-access-message:empty{display:none}
+#health{grid-template-columns:repeat(4,minmax(0,1fr))}#health .metric{min-width:0}#health .metric b{margin:7px 0 4px;font-variant-numeric:tabular-nums;line-height:1.25}
+#health .metric small{display:block;color:var(--muted);font-size:12px}
+#body-hide{font-size:11px;background:none;border:0;padding:2px 0;color:var(--muted);text-decoration:underline}
+@media(max-width:900px){#health{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:400px){#health .metric{padding:11px}#health .metric b{font-size:20px}.body-link,.body-authorize{padding:6px 9px}}
+body[data-notion="unconfigured"] .notion-only{display:none}
+#body-token-form{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
+</style></head><body data-notion="unconfigured"><div class="layout"><aside class="sidebar"><div><div class="brand">hibi<small>日々</small></div><div class="caption">A RECORD OF YOUR DAYS</div></div><nav class="nav"><a href="#devices">我的设备</a><a href="#timeline-section">时间线</a><a href="#health-section">身体状态</a><a href="#storage-section">数据保存</a></nav><div class="sidefoot">一天一天，<br>留下自己的生活。<br><br>Asia / Shanghai</div></aside><main><div class="topline"><span id="todaylabel"></span><button class="refresh" id="refresh">刷新数据 ↻</button></div><h1>把今天，留在这里。</h1><p class="intro">设备上的片段，汇成自己的时间线。</p><div id="error" class="error" role="alert" hidden></div><section class="overview"><div class="stat"><div class="label">此刻在线</div><div class="value" id="online">—</div><div class="note" id="devicecount">正在连接设备</div></div><div class="stat"><div class="label">所选日期 · 使用时长</div><div class="value" id="duration">—</div><div class="note">各设备累计，可能存在重叠</div></div><div class="stat"><div class="label">数据保存</div><div class="value" id="retention">—</div><div class="note" id="range">正在读取历史范围</div></div></section><section id="devices"><div class="sectionhead"><h2>我的设备</h2><span class="hint">点选设备，查看它的一天</span></div><div class="devices" id="devicegrid"></div></section><section id="health-section" aria-labelledby="health-heading">
+<div class="sectionhead"><h2 id="health-heading">身体状态</h2><span class="hint" id="health-stamp">手环记录</span></div>
+<div id="healthnotice" class="notice" role="status" hidden></div>
+<div id="body-gate" class="panel body-gate" hidden>
+<div><strong>查看我的身体记录</strong><p>使用只读凭据授权此浏览器。</p></div>
+<div class="body-actions notion-only"><button class="body-link" id="body-authorize" type="button">通过 Notion 授权</button><a class="body-authorize" href="/now">在 Notion 查看</a></div>
+<details class="body-alt"><summary>使用只读凭据</summary><form id="body-token-form" method="post">
+<label>Hibi 只读凭据 <input id="body-token" type="password" autocomplete="off" required></label>
+<button class="body-authorize" type="submit">授权此浏览器</button></form></details>
 </div>
-
-<script>
-const $ = (id) => document.getElementById(id);
-function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,(c)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
-function hm(iso){return new Intl.DateTimeFormat("zh-CN",{hour:"2-digit",minute:"2-digit"}).format(new Date(iso));}
-function ago(iso){const m=Math.round((Date.now()-new Date(iso).getTime())/60000);if(m<1)return"刚刚";if(m<60)return m+" 分钟前";const h=Math.floor(m/60);return h<24?h+" 小时前":Math.floor(h/24)+" 天前";}
-function dur(s){if(!s)return"进行中";if(s<60)return s+"秒";const m=Math.round(s/60);return m>=60?Math.floor(m/60)+"h"+(m%60)+"m":m+"分钟";}
-async function getJson(base,path){const r=await fetch(base+path,{headers:{accept:"application/json"}});if(!r.ok)throw new Error(path+" → "+r.status);return r.json();}
-
-let DEVICES = [];        // [{deviceId, deviceName, platform}]
-let CURRENT = "";        // selected deviceId for timeline filter; "" = all
-
-function renderDevices(data){
-  DEVICES = (data&&data.devices)||[];
-  $("devices").innerHTML = DEVICES.length ? DEVICES.map((d)=>{
-    const e=d.extra||{};
-    const batt=e.battery_percent!=null?` · 电量 ${e.battery_percent}%${e.battery_charging?"⚡":""}`:"";
-    const net=e.network_type?` · ${esc(e.network_type)}`:"";
-    return `<div class="card"><div class="top"><span class="name">${esc(d.deviceName)}</span><span class="plat">${esc(d.platform)}</span></div>
-      <div class="live">${esc(d.live)}</div>
-      <div class="meta"><span class="dot ${d.isOnline?"on":"off"}"></span>${d.isOnline?"在线":"离线"} · ${ago(d.lastSeenAt)}${batt}${net}</div></div>`;
-  }).join("") : '<div class="empty">无设备数据</div>';
-  renderChips();
+<p id="body-access-message" role="status"></p>
+<div class="healthgrid" id="health"></div>
+<button id="body-hide" type="button" hidden>取消本浏览器授权</button>
+</section><div class="columns"><section id="timeline-section"><div class="sectionhead"><h2>活动时间线</h2><span class="hint" id="rowcount"></span></div><div class="panel"><div class="controls"><input id="date" type="date" aria-label="选择历史日期"><select id="devicefilter" aria-label="筛选设备"><option value="">全部设备</option></select><button class="plain" id="backtoday">今天</button></div><div class="timeline" id="timeline"><div class="empty">正在读取时间线…</div></div></div></section><section><div class="sectionhead"><h2>时间花在哪里</h2><span class="hint">所选日期</span></div><div class="panel apps" id="apps"></div></section></div><section id="storage-section"><div class="sectionhead"><h2>数据保存</h2><span class="badge" id="storagebadge">读取中</span></div><div class="panel storage"><div><strong id="storagetitle">正在读取保存状态</strong><p id="storageinfo"></p><p>历史日期可在上方选择；没有记录的日期会明确显示为空。</p></div><button class="plain" id="export">导出当前时间线</button></div></section><div class="footer"><span>Hibi 日々 · 属于自己的记录</span><span id="updated">尚未更新</span></div><details><summary>连接设置</summary><input id="base" placeholder="服务器地址（通常无需填写）" aria-label="服务器地址"></details></main></div><script>
+const $=id=>document.getElementById(id);const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const tz='Asia/Shanghai';const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:tz,year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());const clock=s=>new Date(s).toLocaleTimeString('zh-CN',{timeZone:tz,hour:'2-digit',minute:'2-digit'});const day=s=>s?new Date(s).toLocaleDateString('zh-CN',{timeZone:tz}):'尚无记录';
+const duration=s=>{s=Math.max(0,Math.round(s||0));return s<60?'不足 1 分钟':s<3600?Math.floor(s/60)+' 分钟':Math.floor(s/3600)+' 小时 '+Math.floor(s%3600/60)+' 分';};
+const age=s=>{const m=Math.max(0,(Date.now()-new Date(s))/60000);return m<1?'刚刚':m<60?Math.floor(m)+' 分钟前':m<1440?Math.floor(m/60)+' 小时前':Math.floor(m/1440)+' 天前';};
+let devices=[],activities=[],selected='',serial=0;const platforms={android:'Android',ios:'iPhone',macos:'Mac',windows:'Windows'};
+$('date').value=today();$('date').max=today();$('todaylabel').textContent=new Date().toLocaleDateString('zh-CN',{timeZone:tz,month:'long',day:'numeric',weekday:'long'});$('base').value=localStorage.getItem('hibi_base')||'';
+async function api(path){const base=$('base').value.trim().replace(/\/$/,'');const r=await fetch(base+path,{signal:AbortSignal.timeout(15000)});if(!r.ok)throw Error('服务器返回 '+r.status);return r.json();}
+function name(a){if(!a.appId)return '空闲';const known={'com.bilibili.app.in':'哔哩哔哩','windows.afk':'暂时离开','macos.afk':'暂时离开','android.afk':'暂时离开'};return a.extra?.custom_app_name||known[a.appId]||a.appName||a.appId;}function deviceName(id){return devices.find(d=>d.deviceId===id)?.deviceName||id;}
+function batteryLabel(device) {
+  const value = 'batteryPercent' in device ? device.batteryPercent : device.extra?.battery_percent;
+  if (!Number.isFinite(value) || value < 0 || value > 100) return '';
+  const charging = 'charging' in device ? device.charging : device.extra?.battery_charging;
+  const source = 'powerSource' in device ? device.powerSource : device.extra?.power_source;
+  const mode = charging === true ? '充电中' : source === 'ac' ? (value === 100 ? '已充满，已插电' : '已插电') : '';
+  const at = device.batteryReportedAt;
+  const old = !device.isOnline || !at || !Number.isFinite(Date.parse(at)) || Date.now() - Date.parse(at) > 300000;
+  const prefix = old ? '上次电量 ' : '电量 ';
+  return ' · ' + prefix + Math.round(value) + '%' + (mode ? ' · ' + mode : '') +
+    (old && at ? '（' + measuredAt(at) + '）' : '');
 }
+function renderDevices(){ $('devicegrid').innerHTML=devices.map(d=>`<button class="device ${selected===d.deviceId?'selected':''}" data-device="${esc(d.deviceId)}" aria-pressed="${selected===d.deviceId}"><div class="devtop"><span class="platform">${esc(platforms[d.platform]||d.platform)}</span><span class="platform"><i class="dot ${d.isOnline?'on':''}"></i>${d.isOnline?'近期有上报':'暂无新上报'}</span></div><div class="devname">${esc(d.deviceName)}</div><div class="devapp">${d.isOnline?'':'上次记录 · '}${esc(name(d))}</div><div class="devtime">${esc(age(d.lastSeenAt))}${esc(batteryLabel(d))}</div></button>`).join('');document.querySelectorAll('[data-device]').forEach(b=>b.onclick=()=>{selected=selected===b.dataset.device?'':b.dataset.device;$('devicefilter').value=selected;load();}); }
+async function load(){const seq=++serial;$('refresh').disabled=true;try{const q=new URLSearchParams({date:$('date').value,limit:'1000'});if(selected)q.set('deviceId',selected);const [c,t,s,store]=await Promise.all([api('/api/devices/current'),api('/api/devices/timeline-query?'+q),api('/api/devices/activity-summary?'+q),api('/api/devices/storage')]);if(seq!==serial)return;devices=c.devices;activities=t.activities.slice().sort((a,b)=>b.startedAt.localeCompare(a.startedAt));renderDevices();$('devicefilter').innerHTML='<option value="">全部设备</option>'+devices.map(d=>`<option value="${esc(d.deviceId)}">${esc(d.deviceName)}</option>`).join('');$('devicefilter').value=selected;
+$('online').textContent=devices.filter(d=>d.isOnline).length+' 台';$('devicecount').textContent='已连接 '+devices.length+' 台设备';$('duration').textContent=duration(s.totalSeconds);$('retention').textContent=store.retentionDays===null?'长期保留':store.retentionDays+' 天';$('range').textContent='现存记录始于 '+day(store.activity?.oldest);$('rowcount').textContent=activities.length>=1000?'1000 条（已达显示上限）':activities.length+' 条片段';
+$('timeline').innerHTML=activities.length?activities.map(a=>`<div class="event"><time>${esc(clock(a.startedAt))}</time><div class="eventbody"><div class="eventtitle">${esc(name(a))}</div><div class="eventmeta">${esc(deviceName(a.deviceId))} · ${a.durationSeconds==null?'记录中':esc(duration(a.durationSeconds))}</div>${a.windowTitle?`<div class="eventmeta">${esc(a.windowTitle.slice(0,100))}</div>`:''}</div></div>`).join(''):'<div class="empty">这一天还没有记录。<br>试试其他日期或设备。</div>';
+const grouped=new Map();for(const a of s.perApp){const key=a.appId;const old=grouped.get(key)||{...a,totalSeconds:0};old.totalSeconds+=a.totalSeconds;grouped.set(key,old);}const per=[...grouped.values()].sort((a,b)=>b.totalSeconds-a.totalSeconds).slice(0,10);const max=per[0]?.totalSeconds||1;
+$('apps').innerHTML=per.length?per.map(a=>`<div><div class="apphead"><span>${esc(name(a))}</span><span>${esc(duration(a.totalSeconds))}</span></div><div class="track"><div class="fill" style="width:${Math.min(100,a.totalSeconds/max*100)}%"></div></div></div>`).join(''):'<div class="empty">这一天暂无使用统计</div>';
+$('storagebadge').textContent=store.retentionDays===null?'自动清理已关闭':'按保留期清理';$('storagetitle').textContent=store.retentionDays===null?'让记录慢慢积累。':'当前保留最近 '+store.retentionDays+' 天';$('storageinfo').textContent=(store.activity?.count||0).toLocaleString()+' 条设备活动';$('updated').textContent='更新于 '+clock(c.fetchedAt)+' · 每 30 秒自动刷新';$('error').hidden=true;
+}catch(e){if(seq===serial){$('error').hidden=false;$('error').textContent='暂时无法更新。已显示的内容可能是上次结果。'+e.message;}}finally{if(seq===serial)$('refresh').disabled=false;}}
 
-function renderChips(){
-  const ids = DEVICES.map(d=>d.deviceId);
-  if (CURRENT && !ids.includes(CURRENT)) CURRENT = "";
-  const chip = (id,label)=>`<span class="chip ${CURRENT===id?"active":""}" data-id="${esc(id)}">${esc(label)}</span>`;
-  $("chips").innerHTML = chip("","全部设备") + DEVICES.map(d=>chip(d.deviceId,d.deviceName)).join("");
-  $("chips").querySelectorAll(".chip").forEach(el=>el.addEventListener("click",()=>{
-    CURRENT = el.getAttribute("data-id"); renderChips(); loadTimeline();
-  }));
+let bodyRequest = 0;
+let bodyAuthorized = false;
+let changingSession = false;
+const privateFetch = (path, options = {}) => fetch(path, {
+  mode:'same-origin', credentials:'same-origin', cache:'no-store', redirect:'error',
+  signal:AbortSignal.timeout(12000), ...options
+});
+const numberFormat = new Intl.NumberFormat('zh-CN');
+const stampFormat = new Intl.DateTimeFormat('zh-CN',{timeZone:tz,month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
+const measuredAt = value => value && Number.isFinite(Date.parse(value)) ? stampFormat.format(new Date(value)) : '时间未知';
+function setBodyNotice(message) {
+  $('healthnotice').textContent=message;
+  $('healthnotice').hidden=!message;
 }
-
-const HLABEL={heart_rate:"心率",steps:"步数",sleep:"睡眠",total_calories:"消耗热量",oxygen_saturation:"血氧",distance:"距离",exercise:"运动",blood_pressure:"血压",body_temperature:"体温",respiratory_rate:"呼吸率",blood_glucose:"血糖",weight:"体重",height:"身高"};
-const HUNIT={bpm:"bpm",count:"步",minutes:"分钟",kcal:"kcal",percent:"%",meters:"m",mmHg:"mmHg",celsius:"℃",breaths_per_min:"/min",mmol_per_l:"mmol/L",kg:"kg"};
-const HCUM=new Set(["steps","distance","total_calories","exercise","sleep"]);
-const ORDER=["heart_rate","steps","sleep","oxygen_saturation","total_calories","distance","exercise","blood_pressure","weight","body_temperature","respiratory_rate","blood_glucose","height"];
-function hround(n){return n==null?"—":(Math.round(n*100)/100);}
-function renderHealth(data){
-  const ms=((data&&data.metrics)||[]).slice().sort((a,b)=>ORDER.indexOf(a.type)-ORDER.indexOf(b.type));
-  $("health").innerHTML = ms.length ? ms.map((m)=>{
-    const unit=HUNIT[m.unit]||m.unit||"";
-    let main, sub;
-    if(HCUM.has(m.type)){ main=hround(m.sum); sub=`合计 · ${m.count} 条`; }
-    else if(m.latest&&m.latest.valueJson){ main=Object.values(m.latest.valueJson).join("/"); sub=`最新 · 均 ${hround(m.avg)}`; }
-    else { main=hround(m.latest?m.latest.value:null); sub=`最新 · ${hround(m.min)}–${hround(m.max)}`; }
-    return `<div class="hcard"><div class="hl">${esc(HLABEL[m.type]||m.type)}</div>
-      <div class="hv">${esc(String(main))}<span class="hu">${esc(unit)}</span></div>
-      <div class="hm">${esc(sub)}</div></div>`;
-  }).join("") : '<div class="empty">暂无健康数据（在 App 内开启「健康同步」扩展后出现）</div>';
+function closeBody() {
+  bodyAuthorized=false;
+  $('health').replaceChildren();
+  $('body-gate').hidden=false;
+  $('body-hide').hidden=true;
+  $('health-stamp').textContent='手环记录';
 }
-
-function renderTimeline(data){
-  const acts=((data&&data.activities)||[]).slice(-80).reverse();
-  $("timeline").innerHTML = acts.length ? acts.map((a)=>
-    `<div class="tl"><span class="t">${hm(a.startedAt)}</span><span class="body">${esc(a.live)} · ${dur(a.durationSeconds)}${CURRENT?"":` <span class="dev">[${esc(a.deviceId)}]</span>`}</span></div>`
-  ).join("") : '<div class="empty">今天还没有活动记录</div>';
+function metric(label,value,line,detail) {
+  const el=document.createElement('article'); el.className='metric';
+  for(const [tag,text] of [['span',label],['b',value],['small',line],['small',detail]]) {
+    if(text) { const part=document.createElement(tag); part.textContent=text; el.append(part); }
+  }
+  return el;
 }
-function renderSummary(data){
-  const rows=(data&&data.perApp)||[];
-  $("summary").innerHTML = rows.length ? `<table><thead><tr><th>应用</th><th>appId</th><th>时长</th><th>次数</th></tr></thead><tbody>${
-    rows.map((p)=>`<tr><td>${esc(p.appName)}</td><td class="muted">${esc(p.appId)}</td><td>${dur(p.totalSeconds)}</td><td>${p.count}</td></tr>`).join("")
-  }</tbody></table>` : '<div class="empty">暂无统计</div>';
+function sleepMinutes(value) {
+  if(!Number.isFinite(value)) return '实睡时长未知';
+  const h=Math.floor(value/60),m=value%60;
+  return (h?h+'小时':'')+(m||!h?m+'分':'');
 }
-
-function baseUrl(){return $("base").value.replace(/\/$/,"");}
-function devQS(){return CURRENT?`&deviceId=${encodeURIComponent(CURRENT)}`:"";}
-
-async function loadTimeline(){
-  try{
-    const [tl,sum] = await Promise.all([
-      getJson(baseUrl(),`/api/devices/timeline-query?limit=300${devQS()}`),
-      getJson(baseUrl(),`/api/devices/activity-summary?${devQS().slice(1)}`),
-    ]);
-    renderTimeline(tl); renderSummary(sum);
-  }catch(err){ $("timeline").innerHTML=`<div class="err">加载失败：${esc(err.message)}</div>`; }
+function sleepSource(kind) {
+  if(kind==='mi_fitness_local_log') return '小米运动健康补录';
+  if(kind==='hibi_band_direct') return '手环直连';
+  return '来源未标注';
 }
-
-async function load(){
-  $("status").textContent="加载中…";
-  await Promise.all([
-    getJson(baseUrl(),"/api/devices/current").then(renderDevices).catch(e=>{$("devices").innerHTML=`<div class="err">加载失败：${esc(e.message)}</div>`;}),
-    getJson(baseUrl(),"/api/devices/health/summary?hours=24").then(renderHealth).catch(e=>{$("health").innerHTML=`<div class="err">加载失败：${esc(e.message)}</div>`;}),
-    loadTimeline(),
-  ]);
-  $("status").textContent="更新于 "+hm(new Date().toISOString());
+function showBody(body) {
+  if(!body?.heartRate || !body.stepsToday || !body.currentSleep) throw Error();
+  const hr=body.heartRate, steps=body.stepsToday, last=body.lastCompletedSleep, now=body.currentSleep;
+  const hrValue=Number.isFinite(hr.bpm)?hr.bpm+' 次/分':'暂无测量';
+  const hrLine=hr.sampledAt?(hr.confidence==='fresh'?'最近 5 分钟测得':'上次测量'):'等待手环传回记录';
+  const minuteCount=steps.observedMinutes;
+  const coverage=Number.isFinite(minuteCount)&&minuteCount>0?'已覆盖 '+numberFormat.format(minuteCount)+' 分钟':'尚无覆盖记录';
+  const source=last?sleepSource(last.source):'';
+  const mixed=last?.asleepMinutesSource && last.asleepMinutesSource!==last.source;
+  const state = {asleep:'睡着了', awake:'醒着', likely_awake:'推测清醒', likely_asleep:'推测睡着', unknown:'手环还没判出来'}[now.state] || '手环还没判出来';
+  let note = '等手环传回睡眠状态';
+  if (now.reason === 'recent_device_input') note = '最近有键鼠操作';
+  else if (now.state === 'likely_awake') note = '手环记录到连续两分钟走动';
+  else if (now.reason === 'personal_sleep_pattern') note = '近 15 分钟的心率和步数符合你以往睡眠时的记录';
+  else if (now.state === 'likely_asleep') note = '手环记录的睡眠时间仍在增加';
+  else if (now.state === 'asleep' || now.state === 'awake') note = '手环报告';
+  else if (now.reason?.includes('conflict')) note = '最近的睡眠和活动记录不一致';
+  else if (now.reason === 'sleep_observation_expired') note = '上一次状态已过期';
+  else if (now.evidence?.minuteSteps?.length && now.evidence.minuteSteps.every(row => row.steps === 0)) note = '最近记录到 0 步，静坐和睡觉都可能出现';
+  $('health').replaceChildren(
+    metric('心率',hrValue,hrLine,hr.sampledAt?measuredAt(hr.sampledAt):''),
+    metric('今日步数',Number.isFinite(steps.steps)?numberFormat.format(steps.steps)+' 步':'暂无记录',coverage,steps.lastSampleAt?'截至 '+clock(steps.lastSampleAt):''),
+    metric('上次睡眠',last?sleepMinutes(last.asleepMinutes):'暂无记录',last?measuredAt(last.startedAt)+' 至 '+measuredAt(last.endedAt):'',
+      last?(Number.isFinite(last.asleepMinutes)?'实睡 · ':'')+source+(mixed?'；时长来自'+sleepSource(last.asleepMinutesSource):''):''),
+    metric('现在睡了吗',state,note,now.sampledAt?measuredAt(now.sampledAt):'')
+  );
+  bodyAuthorized=true;
+  $('body-gate').hidden=true;
+  $('body-hide').hidden=false;
+  $('health-stamp').textContent='手环 · '+clock(body.asOf)+' 更新';
+  $('body-access-message').textContent='';
+  setBodyNotice('');
 }
-$("refresh").addEventListener("click",load);
-load();
-setInterval(load,30000);
-</script>
-</body>
-</html>
+async function loadBody() {
+  if(changingSession) return;
+  const seq=++bodyRequest;
+  try {
+    const response=await privateFetch('/api/console/body');
+    if(seq!==bodyRequest) return;
+    if(response.status===401){
+      closeBody();setBodyNotice('');
+      // Health Connect already published these readings on the original console.
+      // Leave the private band records in their existing scope.
+      const old = await api('/api/devices/health/summary?hours=24').catch(()=>null);
+      if(seq===bodyRequest && !bodyAuthorized && Array.isArray(old?.metrics)) {
+        const names={heart_rate:'心率',steps:'步数',sleep:'睡眠',oxygen_saturation:'血氧'};
+        for(const item of old.metrics) {
+          if(Number.isFinite(item.latest?.value)) $('health').append(metric(names[item.type]||item.type,
+            numberFormat.format(item.latest.value)+' '+(item.unit||''),'健康连接',measuredAt(item.latest.recordedAt)));
+        }
+      }
+      return;
+    }
+    if(!response.ok) throw Error();
+    const body=await response.json();
+    if(seq===bodyRequest) showBody(body);
+  } catch {
+    if(seq!==bodyRequest) return;
+    if(!bodyAuthorized) closeBody();
+    setBodyNotice(bodyAuthorized?'身体记录暂时无法刷新，以下是上次读取的记录。':'暂时无法读取身体记录，请稍后刷新。');
+  }
+}
+$('body-token-form').onsubmit=async event=>{
+  event.preventDefault();
+  if(changingSession) return;
+  const token=$('body-token').value.trim();
+  $('body-token').value='';
+  if(!isSecureContext) {
+    $('body-access-message').textContent='请通过 HTTPS 或 localhost 连接后授权。';
+    return;
+  }
+  changingSession=true;
+  try {
+    const response=await privateFetch('/api/console/session',{method:'POST',headers:{Authorization:'Bearer '+token}});
+    if(!response.ok) throw Error();
+    $('body-access-message').textContent='';
+    changingSession=false;
+    await loadBody();
+  } catch {
+    $('body-access-message').textContent='授权失败。请检查只读凭据和站点地址。';
+  } finally {
+    changingSession=false;
+  }
+};
+$('body-authorize').onclick=async()=>{
+  if(changingSession) return;
+  ++bodyRequest; changingSession=true; $('body-authorize').disabled=true;
+  $('body-access-message').textContent='正在打开 Notion…';
+  try {
+    const response=await privateFetch('/api/console/notion/start',{method:'POST'});
+    if(!response.ok) throw Error();
+    const {notionUrl}=await response.json();
+    const destination=new URL(notionUrl);
+    if(destination.protocol!=='https:' || destination.hostname!=='app.notion.com' ||
+       destination.username || destination.password || destination.port) throw Error();
+    location.assign(destination.href);
+  } catch {
+    $('body-access-message').textContent='暂时无法打开授权页，请重试，或直接在 Notion 查看。';
+  } finally {
+    changingSession=false; $('body-authorize').disabled=false;
+  }
+};
+async function openBody() {
+  if(hibiConfirmation===null) { await loadBody(); return; }
+  const proof=hibiConfirmation;
+  hibiConfirmation=null;
+  changingSession=true;
+  $('body-access-message').textContent='正在确认此浏览器…';
+  try {
+    if(!/^[a-zA-Z0-9_-]{43}$/.test(proof)) throw Error();
+    const response=await privateFetch('/api/console/notion/confirm',{
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({proof})
+    });
+    if(!response.ok) throw Error();
+    $('body-access-message').textContent='';
+  } catch {
+    closeBody();
+    $('body-access-message').textContent='此次授权未生效。请用刚才的浏览器重新点「在本页显示」。';
+  } finally {
+    changingSession=false;
+  }
+  await loadBody();
+  $('health-section').scrollIntoView({block:'start'});
+}
+$('body-hide').onclick=async()=>{
+  if(changingSession) return;
+  ++bodyRequest; changingSession=true; $('body-hide').disabled=true;
+  try {
+    const response=await privateFetch('/api/console/session',{method:'DELETE'});
+    if(!response.ok) throw Error();
+    closeBody(); setBodyNotice(''); $('body-access-message').textContent='已取消此浏览器授权。';
+  } catch {setBodyNotice('取消授权失败，请重试。');}
+  finally {changingSession=false; $('body-hide').disabled=false;}
+};
+$('refresh').onclick=()=>{load();loadBody()};$('date').onchange=load;$('devicefilter').onchange=e=>{selected=e.target.value;load();};$('backtoday').onclick=()=>{$('date').value=today();load();};$('base').onchange=()=>{localStorage.setItem('hibi_base',$('base').value);load();};$('export').onclick=()=>{const blob=new Blob([JSON.stringify({date:$('date').value,deviceId:selected||null,displayLimit:1000,mayBeTruncated:activities.length>=1000,activities},null,2)],{type:'application/json'});const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download='hibi-'+$('date').value+'.json';a.click();URL.revokeObjectURL(u);};load();openBody();setInterval(()=>{if(!document.hidden){load();loadBody();}},30000);
+</script></body></html>

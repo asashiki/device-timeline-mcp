@@ -5,7 +5,7 @@
 ![MCP](https://img.shields.io/badge/MCP-server-6b6570?style=flat-square&labelColor=221f26)
 ![Self-hosted](https://img.shields.io/badge/Self--hosted-single_user-6b6570?style=flat-square&labelColor=221f26)
 ![Storage](https://img.shields.io/badge/Storage-SQLite-6b6570?style=flat-square&labelColor=221f26)
-![License](https://img.shields.io/badge/License-MIT-6b6570?style=flat-square&labelColor=221f26)
+![License](https://img.shields.io/badge/License-MIT%20%2F%20AGPL--3.0-6b6570?style=flat-square&labelColor=221f26)
 [![Part of Asashiki](https://img.shields.io/badge/Part_of-Asashiki-e85d97?style=flat-square&labelColor=221f26)](https://github.com/asashiki)
 
 </div>
@@ -52,31 +52,41 @@
 ## 快速开始（Docker）
 
 ```bash
-git clone <this-repo> device-timeline-mcp
+git clone https://github.com/asashiki/device-timeline-mcp.git
 cd device-timeline-mcp
-cp .env.example .env
-# 编辑 .env → 给每台设备生成一个 token（见下文）
+node tools/init-config.mjs
+
 docker compose up -d --build
 ```
 
 打开 `http://<host>:4823/console` —— 设备开始上报后就会一台台出现。健康检查：`curl http://<host>:4823/health`。
 
-### 不用 Docker（Node ≥ 22.5）
+### 不用 Docker（Node ≥ 22.13）
 
 ```bash
-npm install
-cp .env.example .env   # 编辑它
+npm ci
+node tools/init-config.mjs
 npm run build && npm start      # 或：npm run dev
 ```
 
-> **为什么要 Node 22.5+？** 收集器用的是 Node 自带的 `node:sqlite`，不需要编译任何原生模块。
+> **为什么要 Node 22.13+？** 收集器用的是 Node 自带的 `node:sqlite`，不需要编译任何原生模块。
 
 ---
+
+只有 Docker 的主机也可以在仓库目录运行 `docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/src" -w /src node:24-bookworm-slim node tools/init-config.mjs` 完成初始配置。
+
+## 身体状态与每日记录
+
+第一次运行 `node tools/init-config.mjs` 会生成各设备的 token，保存在 `config/device-tokens.json`，只读凭据位于 `private/`。再次运行会保留原有文件。在各采集端填入对应的设备 token。通过反向代理使用网页时，将 `HIBI_CONSOLE_ORIGIN` 设为实际的 HTTPS 网站地址。
+
+`GET /api/agent/body-now` 返回最近心率、已有步数、上次睡眠及当前睡醒判断，并标注采样时间。身体只读凭据可查这些数据。使用综合只读凭据还能查各设备最近状态，以及 Mac 能提供的桌面和窗口信息。`GET /api/agent/body-range?from=…&to=…` 可查最多七天的已结束时段。睡眠推测会标明依据，近期样本不足时显示未知。
+
+可选的 Notion 接入支持按需刷新私有状态页。每日记录页按小时展开应用和身体记录，迟到的数据会补回发生的日期。安装步骤见 [Notion 与日报说明](scripts/README.md)。
 
 ## 三步上手
 
 1. **起收集器**：照上面 Docker 那段跑起来，确认 `/console` 能打开。
-2. **配 token**：在 `.env` 的 `DEVICE_TOKENS_JSON` 里给每台设备一行（见下一节），每个 token 用 `openssl rand -hex 32` 生成。
+2. 从 `config/device-tokens.json` 取出该设备对应的 token，填入采集端。
 3. **装采集端**：去 [`reporters/`](reporters/) 对应平台的目录，填上**服务器地址**和这台设备的 **token**，剩下的它自己上报。
 
 ---
@@ -109,16 +119,16 @@ npm run build && npm start      # 或：npm run dev
 
 | 平台 | 源码 | 说明 |
 |---|---|---|
-| Android | [`reporters/android`](reporters/android) | 纯时间线 Kotlin 应用（前台服务） |
+| Android | [`reporters/android`](reporters/android) | 前台应用记录、可选健康连接与已配对手环采集 |
 | Windows | [`reporters/windows`](reporters/windows) | .NET 托盘程序，单文件 exe |
-| macOS | [`reporters/macos`](reporters/macos) | Python + launchd 守护进程 |
+| macOS | [原生客户端](reporters/macos-native) 或 [Python 采集端](reporters/macos) | 前台应用，原生版可上报电量和窗口状态 |
 | iOS | [`reporters/ios`](reporters/ios) | 快捷指令自动化（没有可安装的 app） |
 
-桌面端 / Android 采集端做的是同一件事：每 ~10 秒采样一次前台应用 + 窗口标题，带着自己的 Bearer token `POST /api/devices/report`。你要配的只有**服务器地址**和设备 **token**。
+每个采集端使用自己的服务器地址与设备 token。安卓按前台切换事件和周期采样记录，Mac 原生版还会上报电量。iPhone 使用所选 App 的快捷指令事件。
 
 ### Android（手机 / 平板）
 
-从 [`reporters/android`](reporters/android) 编译 APK（Android Studio 或 `./gradlew assembleRelease`），然后：
+从 [`reporters/android`](reporters/android) 编译 APK（Android Studio 或 Android 目录说明中的 Gradle 命令），然后：
 
 1. 把 APK 装到设备上。
 2. 打开一次 → 授予**使用情况访问**权限（设置 → 应用 → 特殊权限 → 使用情况访问），并为它**关闭电池优化**（让它后台一直上报）。
@@ -260,7 +270,7 @@ SQLite 文件落在 `./data` 卷上。
 
 ## 许可证
 
-MIT。
+服务端和桌面采集端使用 [MIT](LICENSE)。包含 HealthAPP 协议代码的安卓应用按 [AGPL-3.0](reporters/android/healthapp-core/src/main/assets/healthapp/LICENSE-AGPL-3.0.txt) 发布。见[上游说明](reporters/android/healthapp-core/UPSTREAM.md)。
 
 ---
 

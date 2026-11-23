@@ -4,6 +4,7 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+
 android {
     namespace = "com.devicetimeline.agent"
     compileSdk = 36
@@ -12,9 +13,8 @@ android {
         applicationId = "com.devicetimeline.agent"
         minSdk = 28
         targetSdk = 36
-        val ciCode = (project.findProperty("versionCode") as String?)?.toIntOrNull() ?: 0
-        versionCode = ciCode + 1
-        versionName = "1.0.$versionCode"
+        versionCode = (project.findProperty("versionCode") as String?)?.toIntOrNull() ?: 37
+        versionName = (project.findProperty("versionName") as String?) ?: "1.0.37"
     }
 
     // Optional release signing: pass -PkeystorePath=… (plus password/alias) in CI.
@@ -59,11 +59,13 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes += "META-INF/versions/9/OSGI-INF/MANIFEST.MF"
         }
     }
 }
 
 dependencies {
+    implementation(project(":hibi-band"))
     implementation(platform("androidx.compose:compose-bom:2024.09.03"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")

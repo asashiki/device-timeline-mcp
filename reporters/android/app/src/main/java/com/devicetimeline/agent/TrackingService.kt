@@ -7,11 +7,21 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.content.IntentFilter
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.app.KeyguardManager
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -28,11 +38,20 @@ class TrackingService : Service() {
 
     private var trackingJob: Job? = null
     private var healthSyncJob: Job? = null
+    private var bandJob: Job? = null
     private var lastHealthSyncAt = 0L
     private var serviceStartedAt = 0L
     private var lastIconState: AppIconManager.IconState? = null
-    private var lastSentKey = ""
-    private var lastSuccessfulReportAt = 0L
+    private val pendingActivities = ArrayDeque<ForegroundAppInfo>()
+    @Volatile private var lastSuccessfulReportAt = 0L
+    @Volatile private var foregroundName: String? = null
+    private val deliveryNotice = DeliveryNotice()
+    @Volatile private var tracking = false
+    private val observeSignal = Channel<Unit>(Channel.CONFLATED)
+    private val uploadSignal = Channel<Unit>(Channel.CONFLATED)
+    private var uploadJob: Job? = null
+    private var screenReceiver: BroadcastReceiver? = null
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var lastNotificationText = ""
     private var wakeLock: PowerManager.WakeLock? = null
 
@@ -59,6 +78,7 @@ class TrackingService : Service() {
                 settingsStore.appendLog("收到启动指令")
                 WatchdogWorker.enqueue(applicationContext)
                 startTrackingIfNeeded()
+                updateBandJob()
                 return START_STICKY
             }
             else -> return START_STICKY
@@ -96,6 +116,9 @@ class TrackingService : Service() {
         }
         acquireWakeLock()
         scheduleWatchdog()
+        tracking = true
+        listenForChanges()
+        uploadJob = serviceScope.launch { sendActivities() }
 
         trackingJob = serviceScope.launch {
             while (isActive) {
@@ -113,6 +136,16 @@ class TrackingService : Service() {
         }
 
         startHealthSyncLoop()
+    }
+
+    private fun updateBandJob() {
+        val band = BandReporting(applicationContext)
+        if (!band.enabled) {
+            bandJob?.cancel()
+            bandJob = null
+            return
+        }
+        if (bandJob?.isActive != true) bandJob = serviceScope.launch { band.loop() }
     }
 
     // Run Health Connect sync from inside the FGS so it inherits the wake lock +
@@ -162,31 +195,109 @@ class TrackingService : Service() {
             return
         }
 
-        val appInfo = UsageTracker.currentForegroundApp(this@TrackingService)
-        if (appInfo == null) {
-            setServiceState("等待前台应用")
-            delay(settings.heartbeatSeconds * 1_000L)
-            return
+        val observations = UsageTracker.observe(this)
+        val current = observations.last()
+        foregroundName = if (current.packageName == null || current.packageName == "android.idle") null else current.appName
+        synchronized(pendingActivities) {
+            if (pendingActivities.lastOrNull()?.observation?.endsWith("_observation") == true) {
+                pendingActivities.removeLast()
+            }
+            pendingActivities.addAll(observations)
+            while (pendingActivities.size > 256) pendingActivities.removeFirst()
         }
+        refreshNotice()
+        uploadSignal.trySend(Unit)
+        withTimeoutOrNull(settings.heartbeatSeconds * 1_000L) { observeSignal.receive() }
+    }
 
-        val extras = DeviceContextProvider.readExtras(this@TrackingService)
-        val timeBucket = appInfo.timestampMs / 10_000L
-        val dedupKey = "${appInfo.packageName}:$timeBucket"
-        val now = System.currentTimeMillis()
-        val forceHeartbeat = now - lastSuccessfulReportAt >= FORCE_REPORT_INTERVAL_MS
-
-        if (dedupKey != lastSentKey || forceHeartbeat) {
-            val sent = ApiReporter.postReport(settings, appInfo, extras)
-            if (sent) {
-                lastSentKey = dedupKey
-                lastSuccessfulReportAt = now
-                setServiceState("正在上报：${appInfo.appName}", "上报成功：${appInfo.appName}")
-            } else {
-                setServiceState("上报失败，正在重试")
+    private suspend fun sendActivities() {
+        for (signal in uploadSignal) {
+            while (tracking) {
+                val next = synchronized(pendingActivities) { pendingActivities.firstOrNull() } ?: break
+                val generation = deliveryNotice.current()
+                if (getSystemService(ConnectivityManager::class.java).activeNetwork == null) {
+                    deliveryNotice.result(generation, "等待联网")
+                    refreshNotice()
+                    break
+                }
+                val result = try {
+                    ApiReporter.postReport(settingsStore.load(), next, DeviceContextProvider.readExtras(this))
+                } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                catch (_: Exception) { ApiReporter.Delivery(ApiReporter.ActivityDelivery.TEMPORARY) }
+                if (!tracking || !kotlin.coroutines.coroutineContext.isActive) return
+                if (result.state != ApiReporter.ActivityDelivery.ACCEPTED) {
+                    val message = when (result.state) {
+                            ApiReporter.ActivityDelivery.NO_CONFIG -> "连接尚未设置"
+                            ApiReporter.ActivityDelivery.AUTH -> "设备授权需要更新"
+                            ApiReporter.ActivityDelivery.NETWORK -> "待联网同步"
+                            else -> "等待服务恢复" + (result.code?.let { "（HTTP $it）" } ?: "")
+                    }
+                    if (deliveryNotice.result(generation, message)) refreshNotice()
+                    break
+                }
+                synchronized(pendingActivities) {
+                    if (pendingActivities.firstOrNull() === next) pendingActivities.removeFirst()
+                    deliveryNotice.result(generation, if (pendingActivities.isEmpty()) "已同步" else "正在补传")
+                }
+                lastSuccessfulReportAt = System.currentTimeMillis()
+                refreshNotice()
             }
         }
+    }
 
-        delay(settings.heartbeatSeconds * 1_000L)
+    private fun refreshNotice() {
+        if (!tracking) return
+        val interactive = getSystemService(PowerManager::class.java).isInteractive
+        val keyguard = getSystemService(KeyguardManager::class.java).isKeyguardLocked
+        val text = ActivityNotice.format(interactive, keyguard, foregroundName, deliveryNotice.message())
+        setServiceState(text)
+    }
+
+    private fun listenForChanges() {
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_ON)
+            addAction(Intent.ACTION_SCREEN_OFF)
+            addAction(Intent.ACTION_USER_PRESENT)
+        }
+        screenReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                foregroundName = null
+                refreshNotice()
+                observeSignal.trySend(Unit)
+            }
+        }.also { ContextCompat.registerReceiver(this, it, filter, ContextCompat.RECEIVER_NOT_EXPORTED) }
+
+        val connectivity = getSystemService(ConnectivityManager::class.java)
+        networkCallback = object : ConnectivityManager.NetworkCallback() {
+            private var current: Network? = null
+            private var validated = false
+            override fun onAvailable(network: Network) {
+                current = network
+                validated = false
+                changed(true)
+            }
+            override fun onLost(network: Network) {
+                if (network != current) return
+                current = null
+                validated = false
+                changed(false)
+            }
+            override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
+                if (network != current) return
+                val ready = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                if (ready != validated) {
+                    validated = ready
+                    if (ready) changed(true)
+                }
+            }
+            private fun changed(available: Boolean) {
+                if (!tracking) return
+                deliveryNotice.network(available)
+                refreshNotice()
+                observeSignal.trySend(Unit)
+                if (available) uploadSignal.trySend(Unit)
+            }
+        }.also { connectivity.registerDefaultNetworkCallback(it) }
     }
 
     // Duolingo-style icon: escalate from healthy → pout → cry the longer we go
@@ -207,12 +318,25 @@ class TrackingService : Service() {
     }
 
     private fun stopTracking(cancelWatchdog: Boolean = true) {
+        tracking = false
+        val connectivity = getSystemService(ConnectivityManager::class.java)
+        screenReceiver?.let { runCatching { unregisterReceiver(it) } }
+        networkCallback?.let { runCatching { connectivity.unregisterNetworkCallback(it) } }
+        screenReceiver = null
+        networkCallback = null
+        uploadJob?.cancel()
+        uploadJob = null
+        bandJob?.cancel()
+        bandJob = null
         trackingJob?.cancel()
         trackingJob = null
         healthSyncJob?.cancel()
         healthSyncJob = null
         lastHealthSyncAt = 0L
-        lastSentKey = ""
+        synchronized(pendingActivities) { pendingActivities.clear() }
+        foregroundName = null
+        deliveryNotice.reset()
+        UsageTracker.reset()
         lastSuccessfulReportAt = 0L
         lastNotificationText = ""
         releaseWakeLock()
@@ -235,7 +359,7 @@ class TrackingService : Service() {
         wakeLock = null
     }
 
-    private fun setServiceState(text: String, logText: String = text) {
+    @Synchronized private fun setServiceState(text: String, logText: String = text) {
         if (text == lastNotificationText) return
         lastNotificationText = text
         updateNotificationNow(text)
@@ -328,7 +452,6 @@ class TrackingService : Service() {
         private const val CHANNEL_ID = "device_timeline_agent_channel"
         private const val NOTIFICATION_ID = 11031
         private const val DEFAULT_WATCHDOG_DELAY_MS = 120_000L
-        private const val FORCE_REPORT_INTERVAL_MS = 50_000L
         private const val INITIAL_HEALTH_SYNC_DELAY_MS = 20_000L
         private const val HEALTH_SYNC_CHECK_INTERVAL_MS = 5 * 60_000L
         // Dynamic icon escalation thresholds (time since last successful report).

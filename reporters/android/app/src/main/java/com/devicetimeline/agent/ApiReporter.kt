@@ -8,6 +8,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URI
+import java.io.IOException
 import java.time.Instant
 import java.util.concurrent.TimeUnit
 
@@ -21,13 +22,16 @@ object ApiReporter {
         .writeTimeout(15, TimeUnit.SECONDS)
         .build()
 
+    enum class ActivityDelivery { ACCEPTED, NO_CONFIG, AUTH, TEMPORARY, NETWORK }
+    data class Delivery(val state: ActivityDelivery, val code: Int? = null)
+
     fun postReport(
         settings: AgentSettings,
         appInfo: ForegroundAppInfo,
         extras: DeviceExtras,
-    ): Boolean {
-        val baseUrl = normalizeBaseUrl(settings.serverUrl) ?: return false
-        if (settings.token.isBlank()) return false
+    ): Delivery {
+        val baseUrl = normalizeBaseUrl(settings.serverUrl) ?: return Delivery(ActivityDelivery.NO_CONFIG)
+        if (settings.token.isBlank()) return Delivery(ActivityDelivery.NO_CONFIG)
 
         val extraJson = JSONObject()
         if (settings.reportBattery) {
@@ -35,10 +39,11 @@ object ApiReporter {
             extras.batteryCharging?.let { extraJson.put("battery_charging", it) }
         }
         extraJson.put("network_type", extras.networkType)
+        extraJson.put("activityObservation", appInfo.observation)
 
         // appId = package name; windowTitle = human app label (Android has no window titles).
         val body = JSONObject()
-            .put("appId", appInfo.packageName)
+            .put("appId", appInfo.packageName ?: JSONObject.NULL)
             .put("windowTitle", appInfo.appName)
             .put("occurredAt", Instant.ofEpochMilli(appInfo.timestampMs).toString())
             .put("extra", extraJson)
@@ -52,12 +57,14 @@ object ApiReporter {
 
         return try {
             client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) Log.w(TAG, "Request failed: ${response.code}")
-                response.isSuccessful
+                when (response.code) {
+                    202 -> Delivery(ActivityDelivery.ACCEPTED)
+                    401, 403 -> Delivery(ActivityDelivery.AUTH, response.code)
+                    else -> Delivery(ActivityDelivery.TEMPORARY, response.code)
+                }
             }
-        } catch (e: Exception) {
-            Log.w(TAG, "Request error: ${e.message}")
-            false
+        } catch (_: IOException) {
+            Delivery(ActivityDelivery.NETWORK)
         }
     }
 

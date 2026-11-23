@@ -9,6 +9,8 @@ import { openDatabase } from "./db/index.js";
 import { Repository } from "./db/repo.js";
 import { DeviceAuth } from "./device-auth.js";
 import { Labels } from "./labels/labels.js";
+import { registerConsoleBody } from "./console-body.js";
+import { registerNotionNow, notionPairWriter } from "./notion-now.js";
 import { registerRoutes } from "./routes.js";
 import { createMcpServer } from "./mcp/tools.js";
 
@@ -46,10 +48,31 @@ async function main() {
   const app = Fastify({ logger: true, bodyLimit: 1_000_000 });
   await app.register(cors, { origin: config.corsOrigin === "*" ? true : config.corsOrigin.split(",") });
 
-  registerRoutes(app, { repo, auth, labels, rawLabels: labels.all() });
+  function loadVerifier(path: string, configuredDigest?: string): Buffer | undefined {
+    try {
+      const digest = (configuredDigest ?? readFileSync(path, "utf8")).trim();
+      return /^[0-9a-f]{64}$/i.test(digest) ? Buffer.from(digest, "hex") : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+  const verifierDir = dirname(config.labelsPath);
+  const bodyReadDigest = loadVerifier(process.env.HIBI_BODY_READ_SHA256_FILE ?? join(verifierDir, "body-read.sha256"));
+  const contextReadDigest = loadVerifier(
+    process.env.HIBI_CONTEXT_READ_SHA256_FILE ?? join(verifierDir, "context-read.sha256"),
+    process.env.AGENT_CONTEXT_READ_TOKEN_SHA256,
+  );
+  if (!bodyReadDigest) console.warn("[body-now] body-only read capability unavailable");
+  if (!contextReadDigest) console.warn("[body-now] Mac context read capability unavailable");
+  registerRoutes(app, { repo, auth, labels, rawLabels: labels.all(), retentionDays: config.retentionDays,
+    bodyReadDigest, contextReadDigest });
+
+  registerConsoleBody(app, repo, db, { bodyReadDigest, contextReadDigest }, notionPairWriter(verifierDir));
+  const hasNotion = registerNotionNow(app, verifierDir);
 
   // Console: a zero-dependency static page that reads the public API.
-  const consoleHtml = readFileSync(join(here, "../public/console.html"), "utf8");
+  const consoleHtml = readFileSync(join(here, "../public/console.html"), "utf8")
+    .replace('<body data-notion="unconfigured">', `<body data-notion="${hasNotion ? 'configured' : 'unconfigured'}">`);
   const serveConsole = async (_req: unknown, reply: import("fastify").FastifyReply) =>
     reply.type("text/html; charset=utf-8").send(consoleHtml);
   app.get("/", serveConsole);

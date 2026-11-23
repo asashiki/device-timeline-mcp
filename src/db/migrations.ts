@@ -63,6 +63,106 @@ const MIGRATIONS: Array<(db: DatabaseSync) => void> = [
         ON device_health(recorded_at DESC);
     `);
   },
+
+  // v3 — player state changes, kept separate from public device activity.
+  (db) => {
+    db.exec(`
+      CREATE TABLE device_playback (
+        device_id TEXT NOT NULL,
+        player TEXT NOT NULL CHECK(player IN ('Apple Music','Spotify')),
+        state TEXT NOT NULL CHECK(state IN ('playing','paused','stopped')),
+        track TEXT,
+        artist TEXT,
+        occurred_at TEXT NOT NULL,
+        PRIMARY KEY (device_id, player, occurred_at)
+      ) WITHOUT ROWID;
+      CREATE INDEX idx_device_playback_device_time ON device_playback(device_id, occurred_at DESC);
+    `);
+  },
+  // v4 — measurements received directly from a wearable. Public Health Connect
+  // read routes select a separate table and never expose these measurements.
+  (db) => {
+    db.exec(`
+      CREATE TABLE band_samples (
+        device_id TEXT NOT NULL,
+        type TEXT NOT NULL CHECK (type IN ('heart_rate','steps')),
+        value INTEGER NOT NULL,
+        recorded_at TEXT NOT NULL,
+        received_at TEXT NOT NULL,
+        PRIMARY KEY (device_id, type, recorded_at)
+      ) WITHOUT ROWID;
+      CREATE INDEX idx_band_samples_time ON band_samples(recorded_at);
+    `);
+  },
+  (db) => {
+    db.exec(`CREATE TABLE band_sleep (
+      device_id TEXT NOT NULL, started_at TEXT NOT NULL, ended_at TEXT NOT NULL,
+      asleep_minutes INTEGER, received_at TEXT NOT NULL,
+      PRIMARY KEY(device_id,started_at)
+    ) WITHOUT ROWID;
+    CREATE INDEX idx_band_sleep_end ON band_sleep(ended_at);`);
+  },
+  // Direct status replies use the time at which the phone observed the response.
+  // Session progress uses the band's own progress timestamp instead.
+  (db) => {
+    db.exec(`CREATE TABLE band_sleep_observations (
+      device_id TEXT NOT NULL,
+      session_start TEXT NOT NULL,
+      observed_at TEXT NOT NULL,
+      state TEXT NOT NULL CHECK(state IN ('asleep','awake','ongoing')),
+      sleep_minutes INTEGER,
+      origin TEXT NOT NULL,
+      time_basis TEXT NOT NULL,
+      received_at TEXT NOT NULL,
+      PRIMARY KEY(device_id,session_start,observed_at,state)
+    ) WITHOUT ROWID;
+    CREATE INDEX idx_band_sleep_observations_time ON band_sleep_observations(device_id,observed_at DESC);`);
+  },
+  (db) => {
+    db.exec(`ALTER TABLE band_sleep_observations ADD COLUMN previous_observed_at TEXT;
+             ALTER TABLE band_sleep_observations ADD COLUMN previous_minutes INTEGER;`);
+  },
+  // One-time, locally verified history. Device uploads and public Health Connect
+  // endpoints continue to use their own tables.
+  (db) => {
+    db.exec(`
+      CREATE TABLE historical_sleep_imports (
+        device_id TEXT NOT NULL, started_at TEXT NOT NULL, ended_at TEXT NOT NULL,
+        asleep_minutes INTEGER NOT NULL CHECK (asleep_minutes BETWEEN 1 AND 1440),
+        received_at TEXT NOT NULL,
+        source TEXT NOT NULL CHECK (source = 'mi_fitness_local_log'),
+        CHECK (ended_at > started_at AND received_at >= ended_at),
+        PRIMARY KEY (device_id, started_at)
+      ) WITHOUT ROWID;
+      CREATE INDEX historical_sleep_by_end ON historical_sleep_imports(device_id, ended_at);
+
+      CREATE VIEW private_completed_sleep AS
+        SELECT b.device_id, b.started_at, b.ended_at, b.asleep_minutes, b.received_at,
+               'hibi_band_direct' AS source, NULL AS superseded_at,
+               i.asleep_minutes AS import_minutes, i.received_at AS import_received_at
+        FROM band_sleep b LEFT JOIN historical_sleep_imports i
+          ON i.device_id=b.device_id AND i.started_at=b.started_at AND i.ended_at=b.ended_at
+        UNION ALL
+        SELECT i.device_id, i.started_at, i.ended_at, i.asleep_minutes, i.received_at, i.source,
+          (SELECT MIN(b.received_at) FROM band_sleep b
+           WHERE b.device_id = i.device_id AND b.started_at < i.ended_at AND b.ended_at > i.started_at
+           AND (b.started_at = i.started_at OR b.ended_at = i.ended_at OR
+             MIN(unixepoch(b.ended_at), unixepoch(i.ended_at)) -
+             MAX(unixepoch(b.started_at), unixepoch(i.started_at)) >=
+             0.9 * MAX(unixepoch(b.ended_at) - unixepoch(b.started_at),
+                       unixepoch(i.ended_at) - unixepoch(i.started_at))))
+          AS superseded_at, NULL AS import_minutes, NULL AS import_received_at
+        FROM historical_sleep_imports i;
+    `);
+  },
+  // The daily Notion writer also picks up newly received samples for older dates.
+  (db) => {
+    db.exec(`
+      CREATE INDEX idx_band_sample_receipts ON band_samples(received_at, recorded_at);
+      CREATE INDEX idx_band_sleep_receipts ON band_sleep(received_at, started_at, ended_at);
+      CREATE INDEX idx_import_sleep_receipts ON historical_sleep_imports(received_at, started_at, ended_at);
+    `);
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;

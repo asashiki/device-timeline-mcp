@@ -4,6 +4,8 @@
 using System.Diagnostics;
 using System.Drawing;
 using System.Reflection;
+using System.Net;
+using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
@@ -25,6 +27,21 @@ static class Program
 
 static class NativeMethods
 {
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct SystemPowerStatus
+    {
+        internal byte AcLineStatus;
+        internal byte BatteryFlag;
+        internal byte BatteryLifePercent;
+        internal byte SystemStatusFlag;
+        internal uint BatteryLifeTime;
+        internal uint BatteryFullLifeTime;
+    }
+
+    [DllImport("kernel32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool GetSystemPowerStatus(out SystemPowerStatus status);
+
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
@@ -117,6 +134,38 @@ static class ConfigStore
 
 // ── Reporter ───────────────────────────────────────────────────────────────
 
+static class DeviceSignals
+{
+    internal static Dictionary<string, object?> Read()
+    {
+        var result = new Dictionary<string, object?>();
+        if (NativeMethods.GetSystemPowerStatus(out var power)
+            && power.BatteryFlag != 255 && (power.BatteryFlag & 128) == 0)
+        {
+            if (power.BatteryLifePercent <= 100) result["battery_percent"] = (int)power.BatteryLifePercent;
+            result["battery_charging"] = (power.BatteryFlag & 8) != 0;
+            if (power.AcLineStatus <= 1) result["power_source"] = power.AcLineStatus == 1 ? "ac" : "battery";
+        }
+        try
+        {
+            var links = NetworkInterface.GetAllNetworkInterfaces()
+                .Where(link => link.OperationalStatus == OperationalStatus.Up && link.NetworkInterfaceType != NetworkInterfaceType.Loopback)
+                .Where(link => link.GetIPProperties().GatewayAddresses.Any(gw =>
+                    !gw.Address.Equals(IPAddress.Any) && !gw.Address.Equals(IPAddress.IPv6Any)))
+                .Select(link => link.NetworkInterfaceType switch
+                {
+                    NetworkInterfaceType.Wireless80211 => "wifi",
+                    NetworkInterfaceType.Ethernet or NetworkInterfaceType.GigabitEthernet
+                        or NetworkInterfaceType.FastEthernetFx or NetworkInterfaceType.FastEthernetT => "ethernet",
+                    _ => null
+                }).Distinct().ToArray();
+            if (links.Length == 1 && links[0] is string type) result["network_type"] = type;
+        }
+        catch (NetworkInformationException) { /* An adapter can disappear during a network change. */ }
+        return result;
+    }
+}
+
 class AgentReporter : IDisposable
 {
     readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(15) };
@@ -181,7 +230,7 @@ class AgentReporter : IDisposable
 
         if (key == _lastKey && !forceHeartbeat) return;
 
-        var extra = new Dictionary<string, object?> { ["network_type"] = "ethernet" };
+        var extra = DeviceSignals.Read();
         if (!string.IsNullOrEmpty(description)) extra["custom_description"] = description;
         if (rule != null) extra["custom_app_name"] = effectiveApp;
 

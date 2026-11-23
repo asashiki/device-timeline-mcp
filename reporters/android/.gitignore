@@ -10,3 +10,6 @@
 .cxx
 *.keystore
 *.jks
+/healthapp-core/build/
+/hibi-band/build/
+!/healthapp-core/src/main/kotlin/com/example/healthapp/data/

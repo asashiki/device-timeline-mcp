@@ -9,7 +9,10 @@ interface DeviceCurrent {
     isOnline: boolean;
     lastSeenAt: string;
     live: string;
-    extra: Record<string, unknown> | null;
+    batteryPercent: number | null;
+    batteryReportedAt: string | null;
+    charging: boolean | null;
+    powerSource: string | null;
   }>;
 }
 interface Timeline {
@@ -77,8 +80,16 @@ export function createMcpServer(apiBase: string): McpServer {
       const data = await api<DeviceCurrent>("/api/devices/current");
       if (!data.devices.length) return text("No devices have reported yet.");
       const lines = data.devices.map((d) => {
-        const batt = d.extra && typeof d.extra.battery_percent === "number" ? ` · ${d.extra.battery_percent}%` : "";
-        return `- ${d.deviceName} [${d.platform}] ${d.isOnline ? "🟢" : "⚪"} ${d.live}${batt}`;
+        const parts = [`- ${d.deviceName} [${d.platform}]`];
+        parts.push(d.isOnline ? d.live : `last report: ${d.lastSeenAt}; last activity: ${d.live}`);
+        if (d.batteryPercent != null) {
+          const timestamp = d.batteryReportedAt ? Date.parse(d.batteryReportedAt) : NaN;
+          const fresh = d.isOnline && Number.isFinite(timestamp) && Date.parse(data.fetchedAt) - timestamp <= 300_000;
+          const charge = d.charging === true ? ", charging" : d.powerSource === "ac" ? ", plugged in" : "";
+          const when = d.batteryReportedAt ? ` at ${d.batteryReportedAt}` : " (time unknown)";
+          parts.push(`${fresh ? "battery" : "last reported battery"} ${d.batteryPercent}%${charge}${when}`);
+        }
+        return parts.join(" · ");
       });
       return text(`Devices (as of ${data.fetchedAt}):\n${lines.join("\n")}`);
     },

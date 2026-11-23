@@ -17,4 +17,4 @@ services:
       # SQLite database survives container rebuilds (back it up yourself; see README).
       - ./data:/data
       # Edit app-labels.json here to rename apps / tweak phrases without a rebuild.
-      - ./config:/app/config
+      - ./config:/app/config:ro

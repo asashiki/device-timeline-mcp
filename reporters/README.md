@@ -13,7 +13,8 @@ and is covered by the same console / read API / MCP tools.
 |---|---|---|
 | Android | [`android/`](android) | Kotlin foreground service (`/api/devices/report`) |
 | Windows | [`windows/`](windows) | .NET system-tray app (`/api/devices/report`) |
-| macOS | [`macos/`](macos) | Python + launchd daemon (`/api/devices/report`) |
+| macOS | [native app](macos-native) | Menu bar app with device activity, battery and private current context |
+| macOS | [Python reporter](macos) | Alternative Python + launchd agent for basic activity |
 | iOS | [`ios/`](ios) | Shortcuts automations (`/api/devices/ios/*`) |
 
 Two devices of the same platform (e.g. an Android phone + tablet) are told apart

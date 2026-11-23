@@ -14,9 +14,10 @@ data class AgentSettings(
 )
 
 data class ForegroundAppInfo(
-    val packageName: String,
+    val packageName: String?,
     val appName: String,
     val timestampMs: Long,
+    val observation: String,
 )
 
 data class DeviceExtras(
