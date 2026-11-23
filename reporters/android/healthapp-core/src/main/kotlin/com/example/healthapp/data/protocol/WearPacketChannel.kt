@@ -407,7 +407,6 @@ class WearPacketChannel(
                 "err=${packet.errorCode?.let { WearPacket.errorCodeName(it) } ?: "-"} " +
                 "fitnessLen=${packet.fitnessRaw?.size ?: -1}",
         )
-        // FITNESS 是 M3 探路对象，原始 hex 一律打出来，方便对照 proto 反推
         _incoming.emit(packet)
     }
 
