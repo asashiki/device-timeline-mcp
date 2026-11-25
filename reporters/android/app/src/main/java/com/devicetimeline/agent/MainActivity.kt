@@ -35,7 +35,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.darkColorScheme
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -81,18 +82,17 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-// Asashiki "Ink Night" palette — keeps the agent in the same visual system as
-// the dashboard and console.
 private val Ink = object {
-    val bg = Color(0xFF0B0D14); val card = Color(0xFF1A1D27); val cardHi = Color(0xFF22252F)
-    val text = Color(0xFFE8E2D4); val dim = Color(0xFF8C8E96); val faint = Color(0xFF565862)
-    val warm = Color(0xFFD89870); val cool = Color(0xFF7FA8B5); val red = Color(0xFFC97064); val green = Color(0xFF85B58E)
+    val bg = Color(0xFFF6F7F5); val card = Color.White; val cardHi = Color(0xFFE5E9E7)
+    val text = Color(0xFF15231F); val dim = Color(0xFF44564F); val faint = Color(0xFF52615A)
+    val warm = Color(0xFF12534C); val cool = Color(0xFF12534C); val red = Color(0xFF933125); val green = Color(0xFF246348)
 }
-private val HibiColors = darkColorScheme(
+private val HibiColors = lightColorScheme(
     background = Ink.bg, surface = Ink.card, surfaceVariant = Ink.cardHi,
-    primary = Ink.warm, onPrimary = Ink.bg, secondary = Ink.cool, onSecondary = Ink.bg,
+    primary = Ink.warm, onPrimary = Color.White, secondary = Ink.cool, onSecondary = Color.White,
+    secondaryContainer = Color(0xFFDAEAE2), onSecondaryContainer = Ink.text,
     onBackground = Ink.text, onSurface = Ink.text, onSurfaceVariant = Ink.dim,
-    error = Ink.red, outline = Color(0x26E8E2D4),
+    error = Ink.red, outline = Color(0xFF77867E),
 )
 
 private enum class HcStatus { AVAILABLE, NEEDS_UPDATE, UNAVAILABLE }
@@ -156,8 +156,15 @@ class MainActivity : ComponentActivity() {
 
     private fun renderScreen() {
         setContent {
+            androidx.compose.runtime.SideEffect {
+                val bars = androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
+                bars.isAppearanceLightStatusBars = true
+                bars.isAppearanceLightNavigationBars = true
+                window.statusBarColor = android.graphics.Color.rgb(246, 247, 245)
+                window.navigationBarColor = android.graphics.Color.WHITE
+            }
             MaterialTheme(colorScheme = HibiColors) {
-                Surface(modifier = Modifier.fillMaxSize()) {
+                Surface(modifier = Modifier.fillMaxSize(), color = Ink.bg) {
                     AgentScreen(
                         perms = perms.value,
                         hcStatus = hcStatus.value,
@@ -294,23 +301,32 @@ private fun AgentScreen(
 
     val configured = serverUrl.isNotBlank() && token.isNotBlank()
 
+    var page by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(if(configured) "今日" else "设置") }
+    androidx.activity.compose.BackHandler(enabled = page != "今日") { page = "今日" }
+    Column(Modifier.fillMaxSize().safeDrawingPadding()) {
+    androidx.compose.runtime.key(page) {
     Column(
-        modifier = Modifier
-            .fillMaxSize()
+        modifier = Modifier.weight(1f).fillMaxWidth()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp, vertical = 18.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        // ── Header ────────────────────────────────────────────────────────────
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text("HIBI · DEVICE TIMELINE", color = Ink.warm, fontSize = 11.sp,
-                letterSpacing = 2.6.sp, fontWeight = FontWeight.Medium)
-            Text("Hibi 日々", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(if (page == "今日") "Hibi 日々" else page, fontSize = 32.sp, fontWeight = FontWeight.Bold)
+            if (page == "今日") Text(java.time.LocalDate.now().format(DateTimeFormatter.ofPattern("M月d日 E", java.util.Locale.CHINA)),
+                color = Ink.dim, fontSize = 16.sp)
         }
+        if (page != "设置") {
+        BandMonitorCard(page, onTools = { page = "手环" }, running=running, configured=configured, onStart = {
+            running = true
+            persist()
+            startService(TrackingService.ACTION_START)
+        }, onStopBand = {
+            if (running) startService(TrackingService.ACTION_START)
+        })
 
-        // ── Status card (primary) ─────────────────────────────────────────────
-        StatusCard(running = running, configured = configured)
-
+        } else {
         // ── Primary action: Start / Stop ──────────────────────────────────────
         if (!running) {
             Button(
@@ -331,15 +347,7 @@ private fun AgentScreen(
                 modifier = Modifier.fillMaxWidth().height(52.dp),
             ) { Text("停止监听", fontSize = 16.sp) }
         }
-        if (status.isNotBlank()) Text(status, color = Ink.dim, fontSize = 12.sp)
-
-        BandMonitorCard(running, configured, onStart = {
-            running = true
-            persist()
-            startService(TrackingService.ACTION_START)
-        }, onStopBand = {
-            if (running) startService(TrackingService.ACTION_START)
-        })
+        if (status.isNotBlank()) Text(status, color = Ink.dim, fontSize = 15.sp)
 
         // ── Connection ────────────────────────────────────────────────────────
         SectionCard("连接") {
@@ -383,7 +391,7 @@ private fun AgentScreen(
         SectionCard("健康同步（扩展）") {
             Text(
                 "可选：把手机 Health Connect 的健康数据（心率/步数/睡眠等）定期上传到收集器。一般用户用不到。",
-                color = Ink.dim, fontSize = 12.sp,
+                color = Ink.dim, fontSize = 15.sp,
             )
             ToggleRow("启用健康同步", hcSyncEnabled) { enabled ->
                 hcSyncEnabled = enabled; persist()
@@ -426,10 +434,14 @@ private fun AgentScreen(
         SectionCard("最近日志") {
             Text(
                 store.loadLogs(30).asReversed().joinToString("\n").ifBlank { "（暂无）" },
-                color = Ink.dim, fontSize = 12.sp,
+                color = Ink.dim, fontSize = 15.sp,
             )
         }
+        }
         Spacer(Modifier.height(8.dp))
+    }
+    }
+    HibiNavigation(page) { page = it }
     }
 }
 
@@ -438,7 +450,7 @@ private fun bandTime(ms: Long) = if (ms > 0) DateTimeFormatter.ofPattern("MM-dd 
 
 @Composable
 private fun BandMonitorCard(
-    running: Boolean, configured: Boolean, onStart: () -> Unit, onStopBand: () -> Unit,
+    page: String, onTools: () -> Unit, running: Boolean, configured: Boolean, onStart: () -> Unit, onStopBand: () -> Unit,
 ) {
     val context = LocalContext.current
     val report = remember { BandReporting(context.applicationContext) }
@@ -449,7 +461,9 @@ private fun BandMonitorCard(
     var hint by remember { mutableStateOf("") }
     var diagnosticsOpen by remember { mutableStateOf(false) }
     var latest by remember { mutableStateOf<Map<String, BandSample>>(emptyMap()) }
+    var hourlySteps by remember { mutableStateOf<List<Int?>>(emptyList()) }
     LaunchedEffect(revision) {
+        hourlySteps = withContext(Dispatchers.IO) { BandSync.stepsByHour(context) }
         latest = withContext(Dispatchers.IO) { BandSync.latestByType(context).associateBy { it.type } }
         withContext(Dispatchers.IO) { BandSync.hasPairing(context) }.let { bound = it }
         enabled = report.enabled
@@ -480,8 +494,21 @@ private fun BandMonitorCard(
     val btPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) start() else hint = "打开手环监测需要附近设备权限。"
     }
-    SectionCard("手环监测") {
-        Text("小米手环 9 Pro", color = Ink.text, fontWeight = FontWeight.SemiBold)
+    val link by com.devicetimeline.agent.band.BandLinkClient.state.collectAsState()
+    val commandScope = rememberCoroutineScope()
+    var commandFeedback by remember { mutableStateOf("") }
+    var sending by remember { mutableStateOf(false) }
+    val toolsOpen = page == "手环"
+    var reminderText by remember { mutableStateOf("") }
+    var alarmTime by remember { mutableStateOf("08:00") }
+    fun sendAction(name:String,args:org.json.JSONObject=org.json.JSONObject()) {
+        if(sending)return
+        sending=true
+        commandScope.launch {
+            try { commandFeedback=com.devicetimeline.agent.band.BandLinkClient.command(name,args).second }
+            finally {sending=false}
+        }
+    }
         val text = when {
             !bound -> "等待导入已配对的手环"
             !configured -> "请先保存服务器连接"
@@ -489,49 +516,74 @@ private fun BandMonitorCard(
             !enabled -> "手环监测已关闭"
             !BandReporting.hasBluetooth(context) -> "需要附近设备权限才能读取手环"
             info.note == "手机蓝牙未开启" -> "请打开手机蓝牙，下次会自动同步"
-            latest.isNotEmpty() -> "手环读数已保存在本机"
-            else -> "等待手环传回第一条记录"
-        }
-        StatusLine(text, if (enabled && running) Ink.cool else Ink.dim)
-        if (info.uploadedAt > 0) {
-            Text("上次成功上传  " + bandTime(info.uploadedAt), color = Ink.dim, fontSize = 12.sp)
+            else -> link.note
         }
         val lastSleep = listOfNotNull(latest["sleep_session"], latest["sleep_band_interval"])
             .maxWithOrNull(compareBy<BandSample> { it.recordedAt }.thenBy { it.type == "sleep_session" })
-        val wakeDay = lastSleep?.endAt?.let { end ->
-            runCatching { Instant.parse(end).atZone(ZoneId.systemDefault()).toLocalDate() }.getOrNull()
+        BandHeader(link, text, if (toolsOpen) null else onTools)
+        if (!toolsOpen) WristOverview(latest["heart_rate"], latest["steps"], hourlySteps, lastSleep)
+        if (toolsOpen) {
+            Button(enabled=link.connected && !sending, onClick={sendAction("buzz")}, modifier=Modifier.fillMaxWidth().height(52.dp)) { Text("震一下", fontSize=17.sp) }
         }
-        BandSampleRow("最近睡眠记录", lastSleep)
-        if (enabled && running && wakeDay != java.time.LocalDate.now()) {
-            Text("等待手环传回今天结束的完整睡眠。", color = Ink.dim, fontSize = 12.sp)
+        if (toolsOpen) SectionCard("手环工具") {
+            var toolGroup by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("提醒") }
+            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(4.dp)){
+                listOf("提醒","闹钟","设备").forEach { label ->
+                    androidx.compose.material3.FilterChip(selected=toolGroup==label,onClick={toolGroup=label},label={Text(label)})
+                }
+            }
+            if(toolGroup=="提醒") {
+            OutlinedTextField(value=reminderText,onValueChange={reminderText=it.take(240)},label={Text("发到手环的文字")},modifier=Modifier.fillMaxWidth())
+            OutlinedButton(enabled=link.connected && !sending && reminderText.isNotBlank(),onClick={sendAction("notify",org.json.JSONObject().put("text",reminderText))}){Text("发送到手环")}
+            OutlinedButton(enabled=link.connected && !sending,onClick={sendAction("reminders")}){Text("查看手环提醒")}
+            }
+            if(toolGroup=="闹钟") {
+            OutlinedButton(enabled=link.connected && !sending,onClick={sendAction("alarms")}){Text("查看闹钟")}
+            OutlinedTextField(value=alarmTime,onValueChange={alarmTime=it.take(5)},singleLine=true,label={Text("闹钟时间（24 小时制）")},modifier=Modifier.fillMaxWidth())
+            val alarm=runCatching{java.time.LocalTime.parse(alarmTime)}.getOrNull()
+            OutlinedButton(enabled=link.connected && !sending && alarm!=null,onClick={alarm?.let {sendAction("alarm-create",org.json.JSONObject().put("hour",it.hour).put("minute",it.minute))}}){Text("添加一次闹钟")}
+            }
+            if(toolGroup=="设备") {
+                listOf("device-info" to "型号与固件","screen-items" to "手环菜单","world-clocks" to "世界时钟",
+                    "sleep-schedule" to "睡眠计划","heart-settings" to "心率监测","oxygen-settings" to "血氧监测",
+                    "stress-settings" to "压力监测","vibration-patterns" to "震动样式",
+                    "watchfaces" to "已有表盘","weather-locations" to "天气地点").chunked(2).forEach { pair ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.spacedBy(8.dp)){
+                        pair.forEach { (action,label) -> OutlinedButton(modifier=Modifier.weight(1f),
+                            enabled=link.connected && !sending,onClick={sendAction(action)}) {Text(label)} }
+                    }
+                }
+            }
         }
-        BandSampleRow("心率", latest["heart_rate"])
-        BandSampleRow("步数", latest["steps"])
-        if (hint.isNotEmpty()) Text(hint, color = Ink.warm, fontSize = 12.sp)
+        if(commandFeedback.isNotBlank())Text(commandFeedback,color=Ink.text,fontSize=16.sp)
+        if (toolsOpen && info.uploadedAt > 0) {
+            Text("上次成功上传  " + bandTime(info.uploadedAt), color = Ink.dim, fontSize = 15.sp)
+        }
+        if (hint.isNotEmpty()) Text(hint, color = Ink.warm, fontSize = 15.sp)
         if (!bound && Build.VERSION.SDK_INT >= 31) {
             OutlinedButton(onClick = { choosePairing.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }) {
                 Text("导入我的手环配对文件")
             }
         }
-        if (enabled && running) {
-            OutlinedButton(onClick = { report.enable(false); enabled = false; onStopBand() }) { Text("关闭手环监测") }
-        } else {
+        if (!enabled || !running) {
             Button(enabled = configured && bound && Build.VERSION.SDK_INT >= 31,
                 onClick = {
                     if (BandReporting.hasBluetooth(context)) start()
                     else btPermission.launch(Manifest.permission.BLUETOOTH_CONNECT)
                 }) { Text("开启手环监测") }
         }
-        androidx.compose.material3.TextButton(onClick = { diagnosticsOpen = !diagnosticsOpen }) {
+        if (toolsOpen) androidx.compose.material3.TextButton(onClick = { diagnosticsOpen = !diagnosticsOpen }) {
             Text(if (diagnosticsOpen) "收起诊断" else "查看诊断")
         }
-        if (diagnosticsOpen) {
-            Text(info.note, color = Ink.dim, fontSize = 12.sp)
-            Text("本机最近保存新读数  " + bandTime(info.readAt), color = Ink.dim, fontSize = 12.sp)
-            if (info.uploadNote.isNotEmpty()) Text(info.uploadNote, color = Ink.dim, fontSize = 12.sp)
+        if (toolsOpen && diagnosticsOpen) {
+            if (enabled && running) {
+                OutlinedButton(onClick = { report.enable(false); enabled = false; onStopBand() }) { Text("关闭手环监测") }
+            }
+            Text(link.diagnostic.ifBlank { link.note }, color = Ink.dim, fontSize = 15.sp)
+            Text("本机最近保存新读数  " + bandTime(info.readAt), color = Ink.dim, fontSize = 15.sp)
+            if (info.uploadNote.isNotEmpty()) Text(info.uploadNote, color = Ink.dim, fontSize = 15.sp)
             BandSampleRow("上次睡眠状态观测", latest["sleep_state"])
         }
-    }
 }
 
 private fun localBandTime(timestamp: String) =
@@ -563,32 +615,7 @@ private fun BandSampleRow(label: String, sample: BandSample?) {
                     else -> "手环记录于 "
                 }
                 Text(timeLabel + whenMeasured,
-                    color = Ink.faint, fontSize = 12.sp)
-            }
-        }
-    }
-}
-
-@Composable
-private fun StatusCard(running: Boolean, configured: Boolean) {
-    val (dotColor, label, sub) = when {
-        running -> Triple(Ink.green, "监听中", "正在上报前台应用与设备状态")
-        !configured -> Triple(Ink.faint, "未配置", "填写服务器地址与 Token 后即可启动")
-        else -> Triple(Ink.faint, "已停止", "点击「启动监听」开始上报")
-    }
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Ink.card),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(
-            modifier = Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Box(modifier = Modifier.size(12.dp)
-                .background(dotColor, RoundedCornerShape(50)))
-            Column {
-                Text(label, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                Text(sub, color = Ink.dim, fontSize = 12.sp)
+                    color = Ink.faint, fontSize = 15.sp)
             }
         }
     }
@@ -597,8 +624,7 @@ private fun StatusCard(running: Boolean, configured: Boolean) {
 @Composable
 private fun SectionCard(title: String, content: @Composable () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(title.uppercase(), color = Ink.dim, fontSize = 11.sp,
-            letterSpacing = 1.8.sp, fontWeight = FontWeight.SemiBold)
+        Text(title, color = Ink.text, fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
         Card(
             colors = CardDefaults.cardColors(containerColor = Ink.card),
             modifier = Modifier.fillMaxWidth(),
@@ -620,10 +646,10 @@ private fun PermissionRow(title: String, desc: String, granted: Boolean, onGrant
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(title, fontSize = 14.sp)
-            Text(desc, color = Ink.faint, fontSize = 11.sp)
+            Text(desc, color = Ink.faint, fontSize = 15.sp)
         }
         if (granted) {
-            Text("✓ 已授予", color = Ink.green, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            Text("✓ 已授予", color = Ink.green, fontSize = 15.sp, fontWeight = FontWeight.Medium)
         } else {
             OutlinedButton(
                 onClick = onGrant,
@@ -635,7 +661,7 @@ private fun PermissionRow(title: String, desc: String, granted: Boolean, onGrant
 
 @Composable
 private fun StatusLine(text: String, color: Color) {
-    Text(text, color = color, fontSize = 12.sp)
+    Text(text, color = color, fontSize = 15.sp)
 }
 
 @Composable

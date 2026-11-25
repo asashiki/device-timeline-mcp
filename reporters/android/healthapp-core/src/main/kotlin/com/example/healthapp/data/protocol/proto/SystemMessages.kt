@@ -121,7 +121,7 @@ class Battery(
         const val FIELD_CHARGE_INFO = 3
 
         fun decode(bytes: ByteArray): Battery {
-            var capacity = 0
+            var capacity: Int? = null
             var chargeStatus: Int? = null
             val r = ProtoReader(bytes)
             while (r.hasNext()) {
@@ -131,7 +131,7 @@ class Battery(
                     else -> r.skip()
                 }
             }
-            return Battery(capacity, chargeStatus)
+            return Battery(requireNotNull(capacity).also {require(it in 0..100)}, chargeStatus)
         }
     }
 }
@@ -159,7 +159,7 @@ class DeviceStatus(val battery: Battery) : SystemPayload {
         const val FIELD_BATTERY = 1
 
         fun decode(bytes: ByteArray): DeviceStatus {
-            var battery = Battery()
+            var battery: Battery? = null
             val r = ProtoReader(bytes)
             while (r.hasNext()) {
                 when (r.nextField()) {
@@ -167,7 +167,7 @@ class DeviceStatus(val battery: Battery) : SystemPayload {
                     else -> r.skip()
                 }
             }
-            return DeviceStatus(battery)
+            return DeviceStatus(requireNotNull(battery))
         }
     }
 }

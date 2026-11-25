@@ -148,9 +148,19 @@ export class Repository {
       ...body,
       currentSleep: { ...observed, evidenceState: observed.state, state },
       sleepRecordChecks: readSleepChecks(this.db, LIVE_HEALTH_DEVICE_ID),
+      wristBattery: this.wristBattery(),
     };
   }
 
+  wristBattery() {
+    const row = this.db.prepare(`SELECT pct, mode, measured_at, received_at FROM wrist_power_samples
+      WHERE device_id=? ORDER BY measured_at DESC LIMIT 1`).get(LIVE_HEALTH_DEVICE_ID);
+    if (!row) return null;
+    return { percent: Number(row.pct), powerMode: String(row.mode),
+      charging: row.mode === "unknown" ? null : row.mode === "charging",
+      measuredAt: new Date(Number(row.measured_at)).toISOString(),
+      receivedAt: new Date(Number(row.received_at)).toISOString() };
+  }
   bodyRange(from: string, to: string, now: Date) {
     return readBodyRange(this.db, LIVE_HEALTH_DEVICE_ID, from, to, now);
   }

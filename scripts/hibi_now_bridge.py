@@ -86,6 +86,10 @@ def render(body):
             if old and last:
                 desc += ' ' + last.astimezone(LOCAL).strftime('%m-%d %H:%M')
         lines.append(f'{name}　{desc}；上次上报 {reports}')
+    wrist = body.get('wristBattery') or {}
+    if type(wrist.get('percent')) is int and 0 <= wrist['percent'] <= 100:
+        mode = {'charging':'充电中','discharging':'使用电池','full':'已充满'}.get(wrist.get('powerMode'),'')
+        lines.append('手环电量　'+str(wrist['percent'])+'%' + (' · '+mode if mode else '') + '；测量 '+seen(wrist.get('measuredAt'),checked))
     hr, steps = body.get('heartRate') or {}, body.get('stepsToday') or {}
     sleep, night = body.get('currentSleep') or {}, body.get('lastCompletedSleep') or {}
     lines += ['', '身体记录']

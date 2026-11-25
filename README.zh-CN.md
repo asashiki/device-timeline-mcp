@@ -277,3 +277,5 @@ SQLite 文件落在 `./data` 卷上。
 <div align="center">
 <sub>Asashiki 项目集的一员 · 视觉语言见 <a href="https://github.com/asashiki/asashiki-design">Asashiki Design</a> · 墨と桜。</sub>
 </div>
+
+[Android 手环使用与 Agent 提醒](docs/wrist.md)

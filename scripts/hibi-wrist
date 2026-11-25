@@ -1,0 +1,65 @@
+#!/usr/bin/env python3
+"""Use Hibi's wrist API from any computer with Python 3."""
+import argparse
+import json
+import os
+import sys
+import uuid
+from pathlib import Path
+from urllib import error, parse, request
+
+
+class NoRedirect(request.HTTPRedirectHandler):
+    def redirect_request(self, *args):
+        return None
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("command", help="status, receipt, cancel, buzz, notify or a wrist action")
+    ap.add_argument("value", nargs="?", help="receipt ID, notification text or JSON arguments")
+    ap.add_argument("--at", help="send at this ISO timestamp including timezone")
+    ap.add_argument("--id", type=uuid.UUID, help="reuse this request ID when retrying")
+    ap.add_argument("--origin", default=os.getenv("HIBI_CONSOLE_ORIGIN"))
+    args = ap.parse_args()
+    origin = parse.urlsplit(args.origin or "")
+    if origin.scheme != "https" or not origin.hostname or origin.username or origin.password or origin.query or origin.fragment:
+        ap.error("set HIBI_CONSOLE_ORIGIN to your HTTPS Hibi server")
+    token = os.getenv("HIBI_WRIST_TOKEN") or Path(os.getenv("HIBI_WRIST_TOKEN_FILE",
+        str(Path.home() / ".config/hibi/wrist-control-token"))).read_text().strip()
+    url = args.origin.rstrip("/") + "/api/agent/wrist"
+    body = None
+    method = "GET"
+    if args.command in ("receipt", "cancel"):
+        url += "/" + str(uuid.UUID(args.value or ""))
+        if args.command == "cancel":
+            method = "DELETE"
+    elif args.command == "status":
+        if args.value:
+            ap.error("status takes no arguments")
+    else:
+        if args.command == "notify":
+            if not args.value:
+                ap.error("provide the text to send")
+            values = {"text": args.value}
+        else:
+            values = json.loads(args.value or "{}")
+        if not isinstance(values, dict):
+            ap.error("provide a JSON object for this command")
+        payload = {"action": args.command, "args": values, "requestId": str(args.id or uuid.uuid4())}
+        if args.at:
+            payload["deliverAt"] = args.at
+        body, method = json.dumps(payload).encode(), "POST"
+    req = request.Request(url, data=body, method=method, headers={
+        "User-Agent": "hibi-wrist/1.0", "Authorization": "Bearer " + token, "Content-Type": "application/json"})
+    with request.build_opener(NoRedirect()).open(req, timeout=12) as res:
+        print(json.dumps(json.load(res), ensure_ascii=False, indent=2))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except error.HTTPError as exc:
+        sys.exit(f"Hibi returned HTTP {exc.code}")
+    except (OSError, ValueError) as exc:
+        sys.exit(str(exc))

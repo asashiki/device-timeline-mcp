@@ -28,6 +28,10 @@ class WearPacket(
     val fitnessRaw: ByteArray? = null,
     /** WearPacket.ErrorCode（wear_common.proto 的 enum，varint） */
     val errorCode: Int? = null,
+    val notificationRaw: ByteArray? = null,
+    val scheduleRaw: ByteArray? = null,
+    val watchfaceRaw: ByteArray? = null,
+    val weatherRaw: ByteArray? = null,
 ) {
 
     fun encode(): ByteArray {
@@ -37,6 +41,10 @@ class WearPacket(
         account?.let { w.message(FIELD_ACCOUNT, it.encode()) }
         systemRaw?.let { w.message(FIELD_SYSTEM, it) }
         fitnessRaw?.let { w.message(FIELD_FITNESS, it) }
+        notificationRaw?.let { w.message(9, it) }
+        watchfaceRaw?.let { w.message(6, it) }
+        weatherRaw?.let { w.message(12, it) }
+        scheduleRaw?.let { w.message(19, it) }
         errorCode?.let { w.varint(FIELD_ERROR_CODE, it.toLong()) }
         return w.toByteArray()
     }
@@ -128,6 +136,10 @@ class WearPacket(
             var account: Account? = null
             var systemRaw: ByteArray? = null
             var fitnessRaw: ByteArray? = null
+            var watchface: ByteArray? = null
+            var weather: ByteArray? = null
+            var notification: ByteArray? = null
+            var schedule: ByteArray? = null
             var errorCode: Int? = null
 
             val r = ProtoReader(bytes)
@@ -141,11 +153,15 @@ class WearPacket(
                         val fragment = r.readBytes()
                         fitnessRaw = fitnessRaw?.plus(fragment) ?: fragment
                     }
+                    6 -> watchface = r.readBytes()
+                    12 -> weather = r.readBytes()
+                    9 -> notification = r.readBytes()
+                    19 -> schedule = r.readBytes()
                     FIELD_ERROR_CODE -> errorCode = r.readVarint().toInt()
                     else -> r.skip()
                 }
             }
-            return WearPacket(type, id, account, systemRaw, fitnessRaw, errorCode)
+            return WearPacket(type, id, account, systemRaw, fitnessRaw, errorCode, notification, schedule, watchface, weather)
         }
     }
 }
