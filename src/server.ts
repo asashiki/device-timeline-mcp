@@ -1,3 +1,6 @@
+import { createHash, timingSafeEqual } from 'node:crypto';
+import { createWristMcp } from './wrist-mcp.js';
+import { registerWrist } from './wrist-control.js';
 import { startEstimateRecovery } from './db/recovered-sleep.js';
 import { startSleepChecks } from './db/sleep-checks.js';
 import { LIVE_HEALTH_DEVICE_ID } from './db/live-health.js';
@@ -70,6 +73,21 @@ async function main() {
   registerRoutes(app, { repo, auth, labels, rawLabels: labels.all(), retentionDays: config.retentionDays,
     bodyReadDigest, contextReadDigest });
 
+  const wristDigest = loadVerifier(join(verifierDir, 'wrist-control.sha256'));
+  registerWrist(app, db, auth, wristDigest);
+  if (wristDigest) {
+    app.all('/mcp/wrist', { logLevel: 'silent' }, async (req, reply) => {
+      const token = /^Bearer ([A-Za-z0-9_-]{32,180})$/i.exec(req.headers.authorization ?? '')?.[1];
+      if (!token || !timingSafeEqual(createHash('sha256').update(token).digest(), wristDigest))
+        return reply.code(401).header('WWW-Authenticate','Bearer realm="Hibi wrist"').send({error:'Unauthorized'});
+      const server = createWristMcp('http://127.0.0.1:' + config.port, token);
+      const transport = new StreamableHTTPServerTransport({sessionIdGenerator: undefined});
+      reply.hijack();
+      reply.raw.on('close', () => { void transport.close(); void server.close(); });
+      await server.connect(transport);
+      await transport.handleRequest(req.raw, reply.raw, req.body);
+    });
+  }
   registerConsoleBody(app, repo, db, { bodyReadDigest, contextReadDigest }, notionPairWriter(verifierDir));
   const hasNotion = registerNotionNow(app, verifierDir);
 

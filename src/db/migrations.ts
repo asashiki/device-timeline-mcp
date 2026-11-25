@@ -191,6 +191,10 @@ const MIGRATIONS: Array<(db: DatabaseSync) => void> = [
       UNION ALL SELECT e.device_id,e.started_at,e.ended_at,NULL,e.received_at,'band_minute_estimate',
         (SELECT MIN(r.received_at) FROM private_native_sleep_history r WHERE r.device_id=e.device_id
          AND r.started_at<e.ended_at AND r.ended_at>e.started_at),NULL,NULL FROM private_sleep_estimates e;`),
+  (db) => db.exec(`CREATE TABLE wrist_power_samples (
+    device_id TEXT NOT NULL, measured_at INTEGER NOT NULL, pct INTEGER NOT NULL CHECK(pct BETWEEN 0 AND 100),
+    mode TEXT NOT NULL CHECK(mode IN ('unknown','charging','discharging','full')), received_at INTEGER NOT NULL,
+    PRIMARY KEY(device_id, measured_at)) WITHOUT ROWID;`),
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;

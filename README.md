@@ -313,3 +313,5 @@ The collector and desktop reporters use the [MIT license](LICENSE). The Android 
 <div align="center">
 <sub>Part of the Asashiki project family · visual language from <a href="https://github.com/asashiki/asashiki-design">Asashiki Design</a> · 墨と桜.</sub>
 </div>
+
+[Android wrist controls, delivery receipts and scheduling (中文)](docs/wrist.md)

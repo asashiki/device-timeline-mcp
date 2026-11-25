@@ -11,6 +11,8 @@ import com.devicetimeline.agent.band.BandSample
 import com.devicetimeline.agent.band.BandSync
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -50,36 +52,14 @@ internal class BandReporting(private val ctx: Context) {
         prefs.getString("upload_note", "") ?: "",
     )
     private fun note(text: String) { prefs.edit().putString("note", text).apply(); refresh() }
-    suspend fun loop() {
-        while (enabled && SettingsStore(ctx).load().isRunningEnabled) {
-            val started = SystemClock.elapsedRealtime()
-            try {
-                if (!hasBluetooth(ctx)) {
-                    note("请授予附近设备权限")
-                } else if (!BandSync.hasPairing(ctx)) {
-                    note("尚未导入手环配对资料")
-                } else {
-                    note("正在读取手环")
-                    val result = BandSync.collect(ctx)
-                    val edit = prefs.edit().putString("note", result.status)
-                    if (result.samples > 0) {
-                        edit.putLong("read_at", System.currentTimeMillis())
-                    }
-                    edit.apply()
-                    refresh()
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                note("读取中断，下次自动重试")
-            }
-            // Old unsent real samples may exist even if the band is no longer reachable.
-            if (enabled) {
-                try { uploadPending() }
-                catch (e: CancellationException) { throw e }
-                catch (_: Exception) { uploadStatus("本机留存，下次重试") }
-            }
-            delay((300_000L - (SystemClock.elapsedRealtime() - started)).coerceAtLeast(1000L))
+    suspend fun loop() = kotlinx.coroutines.coroutineScope {
+        if (!enabled || !hasBluetooth(ctx) || !BandSync.hasPairing(ctx)) return@coroutineScope
+        launch { com.devicetimeline.agent.band.BandLinkClient.maintain(ctx.applicationContext) }
+        launch { WristRemote(ctx).run() }
+        while (kotlinx.coroutines.currentCoroutineContext().isActive) {
+            try { uploadPending() } catch (e: CancellationException) { throw e }
+            catch (_: Exception) { uploadStatus("待联网后补传") }
+            delay(15000)
         }
     }
     private suspend fun uploadPending() {
@@ -94,7 +74,7 @@ internal class BandReporting(private val ctx: Context) {
                 return
             }
             BandSync.ack(ctx, batch)
-            prefs.edit().putLong("uploaded_at", System.currentTimeMillis())
+            prefs.edit().putLong("uploaded_at", System.currentTimeMillis()).putLong("read_at",System.currentTimeMillis())
                 .putString("upload_note", "已收到服务器回执").apply()
             refresh()
         }

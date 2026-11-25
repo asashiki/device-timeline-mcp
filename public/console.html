@@ -120,6 +120,11 @@ function showBody(body) {
       last?(Number.isFinite(last.asleepMinutes)?'实睡 · ':'')+source+(mixed?'；时长来自'+sleepSource(last.asleepMinutesSource):''):''),
     metric('现在睡了吗',sleepLabel,latestSample?'手环数据 '+measuredAt(latestSample):'','')
   );
+  if (body.wristBattery && Number.isFinite(body.wristBattery.percent)) {
+    const power = body.wristBattery;
+    const mode = {charging:'充电中', discharging:'使用电池', full:'已充满'}[power.powerMode] || '';
+    $('health').append(metric('手环电量',power.percent+'%',mode,measuredAt(power.measuredAt)));
+  }
   bodyAuthorized=true;
   $('body-gate').hidden=true;
   $('body-hide').hidden=false;

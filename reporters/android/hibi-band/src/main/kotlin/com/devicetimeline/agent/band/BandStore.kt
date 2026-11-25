@@ -181,7 +181,7 @@ internal class BandStore(context: Context) : SQLiteOpenHelper(context, java.io.F
             endAt = if (row.isNull(3)) null else Instant.ofEpochSecond(row.getLong(3)).toString(),
             asleepMinutes = if (row.isNull(4)) null else row.getInt(4),
             stateOrigin=if (kind == "sleep_state") meta?.getString("origin") ?: "band_basic_status" else null,
-            sessionStart=meta?.takeIf { it.has("sessionStart") }?.getString("sessionStart"), progressOrigin=meta?.getString("origin"), progressTimeBasis=meta?.getString("timeBasis"),
+            sessionStart=meta?.takeIf { it.has("sessionStart") }?.getString("sessionStart"), progressOrigin=meta?.takeIf { it.has("origin") }?.getString("origin"), progressTimeBasis=meta?.takeIf { it.has("timeBasis") }?.getString("timeBasis"),
             previousObservedAt=meta?.takeIf { it.has("previousObservedAt") }?.getString("previousObservedAt"),
             previousMinutes=meta?.takeIf { it.has("previousMinutes") }?.getInt("previousMinutes"))
     }
@@ -191,6 +191,19 @@ internal class BandStore(context: Context) : SQLiteOpenHelper(context, java.io.F
     fun latest(): BandSample? = readableDatabase.rawQuery(
         "SELECT kind,at,value,end_at,asleep_min,progress_json FROM samples ORDER BY (kind='heart_rate') DESC, at DESC LIMIT 1", null
     ).use { if (it.moveToFirst()) sample(it) else null }
+    fun stepsByHour(): List<Int?> {
+        val zone = java.time.ZoneId.systemDefault()
+        val start = java.time.LocalDate.now(zone).atStartOfDay(zone).toEpochSecond()
+        val hours = MutableList<Int?>(24) { null }
+        readableDatabase.rawQuery("SELECT at,value FROM samples WHERE kind='steps' AND at BETWEEN ? AND ?",
+            arrayOf(start.toString(), Instant.now().epochSecond.toString())).use { rows ->
+            while (rows.moveToNext()) {
+                val hour = Instant.ofEpochSecond(rows.getLong(0)).atZone(zone).hour
+                hours[hour] = (hours[hour] ?: 0) + rows.getInt(1)
+            }
+        }
+        return hours
+    }
     fun latestByType(): List<BandSample> = readableDatabase.rawQuery("""SELECT s.kind,s.at,s.value,s.end_at,s.asleep_min,s.progress_json
         FROM samples s JOIN (SELECT kind,MAX(at) AS at FROM samples GROUP BY kind) last
         ON last.kind=s.kind AND last.at=s.at ORDER BY s.kind""", null)

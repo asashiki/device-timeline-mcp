@@ -1,0 +1,55 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { DatabaseSync } from 'node:sqlite';
+import { createHash, randomUUID } from 'node:crypto';
+import Fastify from 'fastify';
+import { runMigrations } from '../dist/db/migrations.js';
+import { DeviceAuth } from '../dist/device-auth.js';
+import { registerWrist } from '../dist/wrist-control.js';
+
+test('scheduled commands survive restart, can be cancelled and are delivered at most once', async t => {
+  const db = new DatabaseSync(':memory:');
+  runMigrations(db);
+  const secret = 'w'.repeat(40), phone = 'p'.repeat(40);
+  const device = { deviceId: 'android-phone', deviceName: 'Phone', platform: 'android', token: phone };
+  function service() {
+    const app = Fastify();
+    registerWrist(app, db, new DeviceAuth([device]), createHash('sha256').update(secret).digest());
+    return app;
+  }
+  let app = service();
+  t.after(async () => { await app.close(); db.close(); });
+  const api = (method, url, token, payload) => app.inject({method, url, headers: {authorization: 'Bearer ' + token}, payload});
+  const wrist = '/api/agent/wrist';
+  const next = '/api/devices/wrist/next';
+  const cancel = { action: 'buzz', requestId: randomUUID(), deliverAt: new Date(Date.now() + 80000).toISOString() };
+  assert.equal((await api('POST', wrist, phone, cancel)).statusCode, 401);
+  assert.equal((await api('POST', wrist, secret, cancel)).statusCode, 202);
+  const immediate = {action: 'notify', requestId: randomUUID(), args: {text: 'Example'}};
+  await api('POST', wrist, secret, immediate);
+  await app.close();
+  app = service();
+  assert.equal((await api('DELETE', wrist + '/' + cancel.requestId, secret)).json().status, 'cancelled');
+  const measured = Date.now() - 20000;
+  const link = {version:1,connected:true,note:'connected',since:measured,battery:0,batteryAt:measured,powerMode:'charging'};
+  assert.equal((await api('POST', next, secret, link)).statusCode, 401);
+  assert.equal((await api('POST', next, phone, link)).json().command.id, immediate.requestId);
+  assert.equal((await api('POST', wrist, secret, immediate)).json().status, 'claimed');
+  assert.equal((await api('POST', wrist, secret, {...immediate,args:{text:'different'}})).statusCode,409);
+  await api('POST', '/api/devices/wrist/receipt', phone, {id:immediate.requestId,status:'sent',detail:'sent'});
+  assert.equal((await api('GET', wrist + '/' + immediate.requestId, secret)).json().status,'sent');
+  assert.equal((await api('DELETE', wrist + '/' + immediate.requestId, secret)).statusCode,409);
+  const status = (await api('GET', wrist, secret)).json();
+  assert.equal(status.phoneOnline,true);
+  assert.equal(status.wristBattery.percent,0);
+  assert.equal(status.wristBattery.measuredAt,new Date(measured).toISOString());
+  await app.close();
+  app=service();
+  const restarted = (await api('GET', wrist, secret)).json();
+  assert.equal(restarted.phoneOnline,false);
+  assert.equal(restarted.wristBattery.percent,0);
+  const expiry = {action:'buzz',requestId:randomUUID()};
+  await api('POST', wrist, secret, expiry);
+  db.prepare('UPDATE private_wrist_commands SET expires=? WHERE id=?').run(Date.now()-1,expiry.requestId);
+  assert.equal((await api('GET',wrist+'/'+expiry.requestId,secret)).json().status,'expired');
+});

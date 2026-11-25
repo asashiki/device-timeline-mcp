@@ -37,3 +37,9 @@ for (const scope of ['body', 'context']) {
   create(verifier, createHash('sha256').update(token).digest('hex') + '\n');
 }
 create('.env', readFileSync(template));
+
+const wristKey = join('private', 'wrist-control-token');
+if (!existsSync(join('config', 'wrist-control.sha256'))) {
+  create(wristKey, freshToken() + '\n');
+  create(join('config', 'wrist-control.sha256'), createHash('sha256').update(readFileSync(wristKey, 'utf8').trim()).digest('hex') + '\n');
+}
