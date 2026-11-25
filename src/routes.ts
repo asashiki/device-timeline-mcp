@@ -1,3 +1,4 @@
+import { dayQuery } from "./db/console-day.js";
 import { LIVE_HEALTH_DEVICE_ID } from "./db/live-health.js";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
@@ -416,6 +417,12 @@ export function registerRoutes(app: FastifyInstance, ctx: RouteContext): void {
       live: labels.liveDescription(d.appId, d.windowTitle),
     }));
     return { fetchedAt: new Date().toISOString(), devices };
+  });
+
+  app.get("/api/devices/day", async (request, reply) => {
+    const q=dayQuery.safeParse(request.query);
+    if (!q.success) return reply.code(400).send({error:"date must be YYYY-MM-DD"});
+    return repo.consoleActivityDay(q.data.date, id=>labels.name(id));
   });
 
   const timelineQuery = z.object({

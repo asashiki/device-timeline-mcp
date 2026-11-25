@@ -4,22 +4,40 @@
 
 export const DISPLAY_TZ = process.env.DISPLAY_TZ ?? "Asia/Shanghai";
 
-function tzOffsetMs(tz: string, atUtcMs: number): number {
-  const d = new Date(atUtcMs);
-  const local = new Date(d.toLocaleString("en-US", { timeZone: tz }));
-  const utc = new Date(d.toLocaleString("en-US", { timeZone: "UTC" }));
-  return local.getTime() - utc.getTime();
+const calendarFormatters = new Map<string, Intl.DateTimeFormat>();
+function localDayKey(time: number, zone: string): string {
+  let formatter = calendarFormatters.get(zone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("sv-SE", {timeZone: zone, year:"numeric", month:"2-digit", day:"2-digit"});
+    calendarFormatters.set(zone, formatter);
+  }
+  return formatter.format(time);
 }
 
-// Returns the [start, end) UTC ISO bounds for a local calendar day.
-// Assumes a fixed-offset zone (e.g. Asia/Shanghai has no DST); good enough
-// for the zones this tool targets.
+// Find the first instant of each local date independently: a day spanning a
+// time-change can be 23 or 25 hours, and some zones change offset at midnight.
+function startOfDate(utcMidnight: number, zone: string) {
+  const date = new Date(utcMidnight).toISOString().slice(0, 10);
+  let left = utcMidnight - 36 * 3600000;
+  let right = utcMidnight + 36 * 3600000;
+  while (left < right) {
+    const middle = left + Math.floor((right - left) / 2);
+    if (localDayKey(middle, zone) < date) left = middle + 1;
+    else right = middle;
+  }
+  return new Date(left).toISOString();
+}
+
+const dateBounds = new Map<string, {start:string; end:string}>();
 export function dayRangeUtc(date: string, tz: string = DISPLAY_TZ): { start: string; end: string } {
-  const baseStart = new Date(`${date}T00:00:00Z`).getTime();
-  const offset = tzOffsetMs(tz, baseStart);
-  const startMs = baseStart - offset;
-  const endMs = startMs + 24 * 60 * 60 * 1000;
-  return { start: new Date(startMs).toISOString(), end: new Date(endMs).toISOString() };
+  const key = tz + "/" + date;
+  const cached = dateBounds.get(key);
+  if (cached) return cached;
+  const midnight = Date.parse(date + "T00:00:00Z");
+  const bounds = {start:startOfDate(midnight,tz), end:startOfDate(midnight+86400000,tz)};
+  if (dateBounds.size >= 128) dateBounds.clear();
+  dateBounds.set(key, bounds);
+  return bounds;
 }
 
 // Today's calendar date (YYYY-MM-DD) in the display timezone.

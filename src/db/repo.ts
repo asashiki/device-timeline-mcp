@@ -3,6 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { onlineWindowSeconds, type DeviceToken, type Platform } from "../config.js";
 import { dayRangeUtc, todayInTz, toUtcIso } from "../time.js";
 import { LIVE_HEALTH_DEVICE_ID, readLiveHealth } from "./live-health.js";
+import { activityDay, consoleDate } from "./console-day.js";
 import { MacContext } from "../mac-context.js";
 import { readBodyRange } from "./body-range.js";
 
@@ -645,6 +646,10 @@ export class Repository {
       isOnline: (now - new Date(r.last_seen_at).getTime()) / 1000 <= onlineWindowSeconds(r.platform),
       extra,
     }; });
+  }
+
+  consoleActivityDay(date:string, appLabel:(id:string)=>string) {
+    return activityDay(this.db, consoleDate(date), appLabel);
   }
 
   private activitiesForDay(date: string, deviceId?: string): ActivityRow[] {
