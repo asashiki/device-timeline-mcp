@@ -186,6 +186,11 @@ export function readLiveHealth(db: DatabaseSync, deviceId: string, now = new Dat
       ORDER BY ended_at DESC, started_at DESC LIMIT 1`).get(deviceId, asOf, asOf, asOf) as SleepRow | undefined;
   const supplement = completed?.asleep_minutes === null && completed.import_received_at !== null &&
     completed.import_received_at <= asOf ? completed.import_minutes : null;
+  const estimated = hasImports && db.prepare("SELECT 1 FROM sqlite_master WHERE name='private_sleep_estimates'").get()
+    ? db.prepare(`SELECT started_at,ended_at,received_at FROM private_sleep_history WHERE device_id=?
+        AND source='band_minute_estimate' AND ended_at<=? AND received_at<=? AND (superseded_at IS NULL OR superseded_at>?)
+        ORDER BY ended_at DESC LIMIT 1`).get(deviceId,asOf,asOf,asOf) as {started_at:string;ended_at:string;received_at:string} | undefined
+    : undefined;
   const primary = withMovementEvidence(db, deviceId, now,
     currentSleep(db, deviceId, asOf, completed?.ended_at), completed);
   const freshConflict = primary.reason === 'walking_conflicts_with_sleep_evidence' ||
@@ -204,7 +209,10 @@ export function readLiveHealth(db: DatabaseSync, deviceId: string, now = new Dat
     stepsToday: { date: day, steps: steps.total, sampleCount: steps.samples, observedMinutes: steps.minutes,
       firstSampleAt: steps.first_at, lastSampleAt: lastStep?.recorded_at ?? null, receivedAt: lastStep?.received_at ?? null,
       coverage: 'observed_minutes_only' as const, ...age(lastStep?.recorded_at ?? null, now.getTime()) },
-    lastCompletedSleep: completed ? { startedAt: completed.started_at, endedAt: completed.ended_at,
+    lastCompletedSleep: estimated && (!completed || estimated.ended_at>completed.ended_at) ? {
+      startedAt:estimated.started_at,endedAt:estimated.ended_at,elapsedMinutes:(Date.parse(estimated.ended_at)-Date.parse(estimated.started_at))/60000,
+      asleepMinutes:null,receivedAt:estimated.received_at,source:'band_minute_estimate',asleepMinutesSource:null,...age(estimated.ended_at,now.getTime())
+    } : completed ? { startedAt: completed.started_at, endedAt: completed.ended_at,
       elapsedMinutes: Math.floor((Date.parse(completed.ended_at) - Date.parse(completed.started_at)) / 60_000),
       asleepMinutes: completed.asleep_minutes ?? supplement, receivedAt: completed.received_at, source: completed.source,
       asleepMinutesSource: supplement !== null ? 'mi_fitness_local_log' : completed.asleep_minutes === null ? null : completed.source,

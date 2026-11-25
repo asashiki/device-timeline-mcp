@@ -20,7 +20,7 @@ export function readBodyRange(db: DatabaseSync, deviceId: string, from: string, 
       FROM band_samples WHERE type='heart_rate' AND ${window}`).get(...args)!;
   const latest = db.prepare(`SELECT recorded_at,value FROM band_samples WHERE type='heart_rate' AND ${window}
       ORDER BY recorded_at DESC LIMIT 1`).get(...args);
-  const raw = db.prepare(`SELECT * FROM private_completed_sleep WHERE device_id=? AND ended_at>?
+  const raw = db.prepare(`SELECT * FROM private_sleep_history WHERE device_id=? AND ended_at>?
       AND started_at<? AND ended_at<=? AND received_at<=? AND (superseded_at IS NULL OR superseded_at>?)
       ORDER BY started_at,ended_at`).all(...args,asOf,asOf) as unknown as Sleep[];
   let last = -Infinity, covered = 0, exact: number | null = raw.length ? 0 : null;
