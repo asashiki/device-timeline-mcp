@@ -22,36 +22,9 @@ function setup(t) {
   return {db,read};
 }
 
-test('independent past on-band profile, daytime contrast, measured quiet minutes and dense current HR jointly support a bounded inference',t=>{
+test('dense low heart rate, stillness and a personal historical profile alone never mark the wearer asleep',t=>{
   const {db,read}=setup(t);
-  const result=read();
-  assert.equal(result.state,'likely_asleep');assert.equal(result.reason,'personal_sleep_pattern');
-  assert.equal(result.origin,'band_minute_pattern');assert.equal(result.sampledAt,at(0));assert.equal(result.previousSampleAt,at(-14));
-  assert.equal(result.sessionStart,null);
-  assert.equal(result.evidence.sleepPattern.heartMinutes,13);
-  assert.equal(result.evidence.sleepPattern.profile.endedAt,at(-1520));
+  assert.equal(read().state,'unknown');
   db.prepare("INSERT INTO band_sleep_observations(device_id,session_start,observed_at,state,origin,time_basis,received_at) VALUES(?,'',?,'awake','band_basic_status','phone_observed',?)").run(phone,at(-4),at(0));
   assert.equal(read().state,'awake');
-  db.exec('DELETE FROM band_sleep_observations');
-  db.prepare("UPDATE band_samples SET value=35 WHERE type='steps' AND recorded_at>=?").run(at(-1));
-  assert.equal(read().reason,'sustained_band_step_increments');
-});
-
-test('late data, incomplete step coverage, out-of-range HR, a recently ended night and missing daytime contrast stay unknown',t=>{
-  const {db,read}=setup(t);
-  function rejected(sql,...args){
-    db.exec('SAVEPOINT variant');db.prepare(sql).run(...args);
-    assert.equal(read().state,'unknown',sql);
-    db.exec('ROLLBACK TO variant; RELEASE variant');
-  }
-  rejected("UPDATE band_samples SET received_at=? WHERE recorded_at>=? AND type='heart_rate'",at(1),at(-14));
-  rejected("UPDATE band_samples SET value=75 WHERE recorded_at>=? AND type='heart_rate'",at(-14));
-  rejected("DELETE FROM band_samples WHERE recorded_at=? AND type='steps'",at(-8));
-  rejected("UPDATE band_samples SET value=3 WHERE recorded_at=? AND type='steps'",at(-4));
-  rejected("UPDATE band_sleep SET received_at=?",at(-1));
-  rejected("DELETE FROM band_samples WHERE type='heart_rate' AND recorded_at>=? AND recorded_at<?",at(-1490),at(-1130));
-  rejected("INSERT INTO band_sleep VALUES(?,?,?,?,?)",phone,at(-60),at(-6),47,at(-3));
-  db.exec('DELETE FROM band_sleep');
-  db.prepare('INSERT INTO historical_sleep_imports VALUES(?,?,?,?,?,?)').run(phone,at(-1700),at(-1520),170,at(-1480),'mi_fitness_local_log');
-  assert.equal(read().state,'unknown');
 });

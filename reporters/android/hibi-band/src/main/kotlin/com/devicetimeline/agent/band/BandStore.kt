@@ -120,8 +120,17 @@ internal class BandStore(context: Context) : SQLiteOpenHelper(context, java.io.F
             if (!FitnessSync.isDailyRecord(frame.dataId)) {
                 val saved = BandSleep.decode(frame, now)?.let { storeSleep(db, it) }
                     ?: BandSleep.provisional(frame, now)?.let { storeSleep(db, it, "sleep_band_interval") } ?: 0
+                val point = BandProgress.freshRecord(frame, now)
+                val added = if (point == null) 0 else {
+                    val meta = org.json.JSONObject().put("sessionStart", instant(point.first)).toString()
+                    db.compileStatement("INSERT OR IGNORE INTO samples(kind,at,value,progress_json) VALUES('sleep_record_sample',?,1,?)").use {
+                        it.bindLong(1, point.second)
+                        it.bindString(2, meta)
+                        if (it.executeInsert() == -1L) 0 else 1
+                    }
+                }
                 db.setTransactionSuccessful()
-                return saved
+                return saved + added
             }
             val valid = FitnessDailyRecordParser.parseValid(frame.bitmap, frame.dataId.version)
             val stride = FitnessDailyRecordParser.recordLength(valid)
@@ -166,7 +175,7 @@ internal class BandStore(context: Context) : SQLiteOpenHelper(context, java.io.F
     }
     private fun sample(row: Cursor): BandSample {
         val kind = row.getString(0)
-        val unit = when (kind) { "heart_rate" -> "bpm"; "steps" -> "count"; "sleep_session", "sleep_band_interval" -> "minutes"; "sleep_state", "sleep_interval_progress" -> "state"; "sleep_progress" -> "minutes"; else -> error("Unknown band metric") }
+        val unit = when (kind) { "heart_rate" -> "bpm"; "steps" -> "count"; "sleep_session", "sleep_band_interval" -> "minutes"; "sleep_state", "sleep_interval_progress", "sleep_record_sample" -> "state"; "sleep_progress" -> "minutes"; else -> error("Unknown band metric") }
         val meta = if(row.isNull(5)) null else org.json.JSONObject(row.getString(5))
         return BandSample(kind, row.getInt(2), unit, Instant.ofEpochSecond(row.getLong(1)).toString(),
             endAt = if (row.isNull(3)) null else Instant.ofEpochSecond(row.getLong(3)).toString(),
@@ -177,7 +186,7 @@ internal class BandStore(context: Context) : SQLiteOpenHelper(context, java.io.F
             previousMinutes=meta?.takeIf { it.has("previousMinutes") }?.getInt("previousMinutes"))
     }
     fun pending(limit: Int): List<BandSample> = readableDatabase.rawQuery(
-        "SELECT kind,at,value,end_at,asleep_min,progress_json FROM samples WHERE uploaded=0 ORDER BY at,kind LIMIT ?", arrayOf(limit.coerceIn(1, 500).toString())
+        "SELECT kind,at,value,end_at,asleep_min,progress_json FROM samples WHERE uploaded=0 ORDER BY CASE WHEN kind IN ('sleep_record_sample','sleep_state','sleep_interval_progress','sleep_progress') AND at>=CAST(strftime('%s','now') AS INTEGER)-300 THEN 0 ELSE 1 END,at,kind LIMIT ?", arrayOf(limit.coerceIn(1, 500).toString())
     ).use { row -> buildList { while (row.moveToNext()) add(sample(row)) } }
     fun latest(): BandSample? = readableDatabase.rawQuery(
         "SELECT kind,at,value,end_at,asleep_min,progress_json FROM samples ORDER BY (kind='heart_rate') DESC, at DESC LIMIT 1", null

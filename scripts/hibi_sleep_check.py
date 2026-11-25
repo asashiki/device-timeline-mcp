@@ -116,7 +116,7 @@ def hit(row,start,end):
             and data.get('timeBasis') == 'device_sample'):
         return 'likely_asleep'
     if (data.get('origin'), data.get('timeBasis')) not in (
-            ('band_sleep_report','device_sample'),('band_live_progress','phone_observed_growth')):
+            ('band_sleep_report','device_sample'),('band_sleep_record','device_sample'),('band_live_progress','phone_observed_growth')):
         return None
     try:
         reported_start=instant(data['sessionStart'])

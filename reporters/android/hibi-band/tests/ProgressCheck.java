@@ -31,6 +31,11 @@ class ProgressCheck {
         check(BandProgress.Companion.from(v4(start,true,new int[]{58,60,59}),now)==null);
         check(BandProgress.Companion.from(v4(start,false,new int[]{0,0,0}),now)==null);
         var frame = v4(start,false,new int[]{58,60,59});
+        check(BandProgress.Companion.freshRecord(frame,start+120L).getSecond() == start+120L);
+        check(BandProgress.Companion.freshRecord(frame,start+420L) != null);
+        check(BandProgress.Companion.freshRecord(frame,start+421L) == null);
+        check(BandProgress.Companion.freshRecord(v4(start,true,new int[]{58}),start+10L) == null);
+        check(BandProgress.Companion.freshRecord(v4(start,false,new int[]{}), start+5L).getSecond()==(long)start);
         var id = frame.getDataId();
         var ids = java.util.List.of(id);
         var early = new CurrentSleepPoll();

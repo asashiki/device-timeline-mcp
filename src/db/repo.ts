@@ -178,6 +178,7 @@ export class Repository {
   saveBandSamples(deviceId: string, records: ReadonlyArray<{
     type: 'steps' | 'heart_rate'; value: number; recordedAt: string;
   } | {type: 'sleep_session'; value: number; recordedAt: string; valueJson:{endAt:string;asleepMinutes?:number|undefined}}
+    | {type: 'sleep_record_sample'; value: number; recordedAt: string; valueJson:{sessionStart:string}}
     | {type: 'sleep_band_interval'; value: number; recordedAt: string; valueJson:{endAt:string}}
     | {type: 'sleep_state'; value: number; recordedAt: string; valueJson:{origin:'band_basic_status'|'band_status_event';timeBasis:'phone_observed'}}
     | {type: 'sleep_progress' | 'sleep_interval_progress'; value: number; recordedAt: string;
@@ -205,7 +206,10 @@ export class Repository {
     try {
       for (const record of records) {
         const start = new Date(record.recordedAt).toISOString();
-        if (record.type === 'sleep_band_interval') {
+        if (record.type === 'sleep_record_sample') {
+          observation.run(deviceId,new Date(record.valueJson.sessionStart).toISOString(),start,'ongoing',null,
+                          'band_sleep_record','device_sample',receivedAt,null,null);
+        } else if (record.type === 'sleep_band_interval') {
           interval.run(deviceId, start, new Date(record.valueJson.endAt).toISOString(), receivedAt);
         } else if (record.type === 'sleep_session') {
           sleep.run(deviceId, start, new Date(record.valueJson.endAt).toISOString(), record.valueJson.asleepMinutes ?? null, receivedAt);

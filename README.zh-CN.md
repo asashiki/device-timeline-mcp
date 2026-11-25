@@ -79,7 +79,7 @@ npm run build && npm start      # 或：npm run dev
 
 第一次运行 `node tools/init-config.mjs` 会生成各设备的 token，保存在 `config/device-tokens.json`，只读凭据位于 `private/`。再次运行会保留原有文件。在各采集端填入对应的设备 token。通过反向代理使用网页时，将 `HIBI_CONSOLE_ORIGIN` 设为实际的 HTTPS 网站地址。
 
-`GET /api/agent/body-now` 返回最近心率、已有步数、上次睡眠及当前睡醒判断，并标注采样时间。身体只读凭据可查这些数据。使用综合只读凭据还能查各设备最近状态，以及 Mac 能提供的桌面和窗口信息。`GET /api/agent/body-range?from=…&to=…` 可查最多七天的已结束时段。手环报告入睡或近期数据符合睡眠规律时显示「睡了」，其余时间默认显示「醒着」。页面另列手环数据时间。
+`GET /api/agent/body-now` 返回最近心率、已有步数、上次睡眠及当前睡醒判断，并标注采样时间。身体只读凭据可查这些数据。使用综合只读凭据还能查各设备最近状态，以及 Mac 能提供的桌面和窗口信息。`GET /api/agent/body-range?from=…&to=…` 可查最多七天的已结束时段。最近五分钟内有手环睡眠记录或明确的入睡状态时显示「睡了」，其余默认「醒着」。按手环记录的时间判断。页面另列手环数据时间。
 
 可选的 Notion 接入支持按需刷新私有状态页。每日记录页按小时展开应用和身体记录，迟到的数据会补回发生的日期。安装步骤见 [Notion 与日报说明](scripts/README.md)。
 

@@ -22,6 +22,27 @@ internal data class BandProgress(val start: Long, val nativeAt: Long?, val minut
         return ProgressSignal("sleep_progress",now,minutes!!,"band_live_progress","phone_observed_growth",previous.observed,previous.minutes)
     }
     companion object {
+        // A timestamp inside an authenticated sleep report is itself sleep data.
+        // A completed report or an old replay must never refresh the current state.
+        fun freshRecord(frame: FitnessFileFrame, now: Long): Pair<Long,Long>? {
+            if (!FitnessSync.isFullDaySleep(frame.dataId) || frame.dataId.version !in 1..6) return null
+            val report = FitnessSleepReportParser.parse(frame) ?: return null
+            val start = report.startTimeSec ?: return null
+            if (report.sleepFull != 0 || start !in (now-86400)..now || start != frame.dataId.timestamp) return null
+            val end = report.endTimeSec ?: 0L
+            if (end > 0 && end !in start..now) return null
+            fun latest(first: Long?, interval: Int, values: List<Int>, range: IntRange): Long? {
+                if (first == null || first < start || interval !in 1..3600) return null
+                val i = values.indexOfLast { it in range }
+                if (i < 0) return null
+                return (first + i.toLong()*interval).takeIf { it <= now && (end == 0L || it <= end) }
+            }
+            val at = listOfNotNull(start, end.takeIf { it > 0 },
+                latest(report.heartRateFirstTimeSec,report.heartRateIntervalSec,report.heartRates,1..254),
+                latest(report.bloodOxygenFirstTimeSec,report.bloodOxygenIntervalSec,report.bloodOxygens,1..100)).max()
+            return (start to at).takeIf { now-at <= 300 }
+        }
+
         fun from(frame: FitnessFileFrame, now: Long): BandProgress? {
             if (!FitnessSync.isFullDaySleep(frame.dataId) || frame.dataId.version !in 1..6) return null
             val report = FitnessSleepReportParser.parse(frame) ?: return null

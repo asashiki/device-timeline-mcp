@@ -49,6 +49,8 @@ const bandBatch = z.object({ records: z.array(z.discriminatedUnion("type", [
     valueJson: z.discriminatedUnion("origin",[nativeProgress, observedGrowth]) }).strict(),
   z.object({ ...bandSampleBase, type: z.literal("sleep_interval_progress"), unit:z.literal("state"), value:z.literal(1),
     valueJson:nativeProgress }).strict(),
+  z.object({ ...bandSampleBase, type: z.literal("sleep_record_sample"), unit:z.literal("state"), value:z.literal(1),
+    valueJson:z.object({sessionStart:sessionTimestamp}).strict() }).strict(),
   z.object({ ...bandSampleBase, type: z.literal("sleep_band_interval"), unit:z.literal("minutes"),
     value:z.number().int().min(1).max(1440), valueJson:z.object({endAt:sessionTimestamp}).strict() }).strict(),
   z.object({ ...bandSampleBase, type: z.literal("sleep_session"), unit: z.literal("minutes"),
@@ -67,6 +69,11 @@ const bandBatch = z.object({ records: z.array(z.discriminatedUnion("type", [
     const increase = r.value - proof.previousMinutes;
     return Date.parse(proof.previousObservedAt) >= Date.parse(proof.sessionStart)
       && gap >= 45 && gap <= 600 && increase > 0 && increase <= Math.ceil(gap / 60) + 1;
+  }
+  if (r.type === "sleep_record_sample") {
+    const at = Date.parse(r.recordedAt);
+    const span = at-Date.parse(r.valueJson.sessionStart);
+    return at<=Date.now() && span>=0 && span<=86400000;
   }
   if (r.type === "sleep_band_interval") {
     const end = Date.parse(r.valueJson.endAt);

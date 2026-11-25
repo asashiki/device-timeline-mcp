@@ -60,5 +60,15 @@ test('a read capability gets live status and cannot ingest; a device key cannot 
   const pushed = (await app.inject({url,headers:{authorization:'Bearer '+key}})).json().currentSleep;
   assert.equal(pushed.state,'asleep');
   assert.equal(pushed.origin,'band_status_event');
+  db.exec('DELETE FROM band_sleep_observations');
+  const recorded=at(60_000);
+  const point={source:'hibi_band_direct',type:'sleep_record_sample',unit:'state',value:1,recordedAt:recorded,valueJson:{sessionStart:recorded}};
+  assert.equal((await ingest(point)).statusCode,202);
+  const first=(await app.inject({url,headers:{authorization:'Bearer '+key}})).json().currentSleep;
+  assert.equal(first.state,'asleep');assert.equal(first.reason,'fresh_sleep_record');
+  db.exec('DELETE FROM band_sleep_observations');
+  const old=at(3_600_000);
+  assert.equal((await ingest({...point,recordedAt:old,valueJson:{sessionStart:old}})).statusCode,202);
+  assert.equal((await app.inject({url,headers:{authorization:'Bearer '+key}})).json().currentSleep.state,'awake');
   assert.deepEqual((await app.inject({url:'/api/devices/health/summary'})).json().metrics,[]);
 });
