@@ -195,6 +195,14 @@ const MIGRATIONS: Array<(db: DatabaseSync) => void> = [
     device_id TEXT NOT NULL, measured_at INTEGER NOT NULL, pct INTEGER NOT NULL CHECK(pct BETWEEN 0 AND 100),
     mode TEXT NOT NULL CHECK(mode IN ('unknown','charging','discharging','full')), received_at INTEGER NOT NULL,
     PRIMARY KEY(device_id, measured_at)) WITHOUT ROWID;`),
+  (db) => db.exec(`CREATE TABLE private_phone_location (
+    device_id TEXT NOT NULL, sampled_at TEXT NOT NULL, latitude REAL NOT NULL,
+    longitude REAL NOT NULL, accuracy_meters REAL NOT NULL, received_at TEXT NOT NULL,
+    PRIMARY KEY(device_id, sampled_at)) WITHOUT ROWID;
+    CREATE TABLE private_band_metrics (
+      device_id TEXT NOT NULL, type TEXT NOT NULL CHECK(type IN ('oxygen_saturation','distance')),
+      recorded_at TEXT NOT NULL, value INTEGER NOT NULL, received_at TEXT NOT NULL,
+      PRIMARY KEY(device_id,type,recorded_at)) WITHOUT ROWID;`),
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;

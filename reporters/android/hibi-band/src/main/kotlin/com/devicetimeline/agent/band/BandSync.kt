@@ -46,6 +46,7 @@ object BandSync {
     }
     fun hasPairing(context: Context): Boolean = File(context.noBackupFilesDir, "hibi-band-pairing.bin").isFile
     fun pending(context: Context, limit: Int = 300) = BandStore(context).use { it.pending(limit) }
+    fun pendingExtended(context: Context, limit: Int) = BandStore(context).use { it.pendingExtended(limit) }
     fun ack(context: Context, sent: List<BandSample>) = BandStore(context).use { it.ack(sent) }
     fun latest(context: Context) = BandStore(context).use { it.latest() }
     fun latestSleep(context: Context) = BandStore(context).use { it.latestByType().firstOrNull { row -> row.type == "sleep_session" } }

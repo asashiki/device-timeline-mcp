@@ -43,12 +43,6 @@ struct PlayerActivity {
         event.state == old.event.state && event.track == old.event.track && event.artist == old.event.artist
     }
 
-    func recentDescription(now: Date) -> String? {
-        guard now < expires, event.state == "playing" else { return nil }
-        let name = event.player == "com.apple.Music" ? "音乐" : "Spotify"
-        let metadata = [event.track, event.artist].compactMap { $0 }.joined(separator: " · ")
-        return name + " 最近播放" + (metadata.isEmpty ? "（未提供曲名）" : "：" + metadata)
-    }
 }
 
 private final class PlaybackSessionDelegate: NSObject, URLSessionTaskDelegate {

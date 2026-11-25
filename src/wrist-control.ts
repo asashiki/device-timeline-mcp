@@ -1,11 +1,11 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { DatabaseSync } from 'node:sqlite';
 import type { DeviceAuth } from './device-auth.js';
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { LIVE_HEALTH_DEVICE_ID } from './db/live-health.js';
 
-const none=z.object({}).strict(), id=z.number().int().min(1).max(255), hour=z.number().int().min(0).max(23), minute=z.number().int().min(0).max(59);
+const none=z.object({}).strict(), id=z.number().int().min(0).max(255), hour=z.number().int().min(0).max(23), minute=z.number().int().min(0).max(59);
 const title=z.string().trim().min(1).max(64), text=z.string().trim().min(1).max(240), enabled=z.boolean();
 const alarm=z.object({hour,minute,repeatMask:z.number().int().min(0).max(127).optional(),enabled:enabled.optional()}).strict();
 const reminder=z.object({at:z.string().datetime({offset:true}),title}).strict();
@@ -14,6 +14,7 @@ const actions:Record<string,z.ZodTypeAny> = Object.fromEntries([
  'vibration-patterns','screen-items','widgets','notification-screen','camera-status','heart-settings','oxygen-settings','stress-settings','find-stop','sync-clock'
 ].map(name=>[name,none]));
 Object.assign(actions, {
+ 'wake-at':z.object({at:z.string().datetime({offset:true}).refine(s=>Date.parse(s)%60000===0,"Use a whole minute")}).strict(),
  'buzz':z.object({seconds:z.number().int().min(1).max(6).optional()}).strict(),
  'notify':z.object({title:title.optional(),text}).strict(),
  'alarm-create':alarm,'alarm-edit':alarm.extend({id}),'alarm-delete':z.object({id}).strict(),
@@ -29,7 +30,10 @@ const pause=(ms:number)=>new Promise<void>(resolve=>setTimeout(resolve,ms));
 export function registerWrist(app:FastifyInstance,db:DatabaseSync,auth:DeviceAuth,verifier?:Buffer){
  db.exec(`CREATE TABLE IF NOT EXISTS private_wrist_commands (
   id TEXT PRIMARY KEY, action TEXT NOT NULL,args TEXT NOT NULL,due INTEGER NOT NULL,expires INTEGER NOT NULL,
-  claimed INTEGER,status TEXT NOT NULL DEFAULT 'queued',detail TEXT); CREATE INDEX IF NOT EXISTS wrist_due ON private_wrist_commands(status,due);`);
+  claimed INTEGER,status TEXT NOT NULL DEFAULT 'queued',detail TEXT); CREATE INDEX IF NOT EXISTS wrist_due ON private_wrist_commands(status,due);
+   CREATE TABLE IF NOT EXISTS private_wrist_wake_followup (
+     parent TEXT PRIMARY KEY, command_id TEXT NOT NULL UNIQUE);
+   `);
  let lastPhone:{at:number;connected:boolean;note:string;since:number;battery?:number;batteryAt?:number;powerMode?:string}|null=null;
  let wake:(()=>void)|undefined; let pollGeneration=0;
  const opts={logLevel:'silent' as const,bodyLimit:4096};
@@ -49,9 +53,13 @@ export function registerWrist(app:FastifyInstance,db:DatabaseSync,auth:DeviceAut
    db.prepare("UPDATE private_wrist_commands SET status='expired' WHERE status='queued' AND expires<?").run(now);
    db.prepare("UPDATE private_wrist_commands SET status='unconfirmed' WHERE status='claimed' AND claimed<?").run(now-60000);
    db.prepare('DELETE FROM private_wrist_commands WHERE expires<?').run(now-7*86400000);
+   db.exec('DELETE FROM private_wrist_wake_followup WHERE parent NOT IN (SELECT id FROM private_wrist_commands)');
  }
  const read=(id:string)=>db.prepare('SELECT * FROM private_wrist_commands WHERE id=?').get(id) as Row|undefined;
- const view=(r:Row)=>({id:r.id,action:r.action,status:r.status,detail:r.detail,deliverAt:new Date(r.due).toISOString(),expiresAt:new Date(r.expires).toISOString()});
+ const view=(r:Row)=>({...(r.action==='wake-at' ? {
+    wakeAt:JSON.parse(r.args).at,
+    followUpId:db.prepare('SELECT command_id FROM private_wrist_wake_followup WHERE parent=?').get(r.id)?.command_id ?? null
+  } : {}),id:r.id,action:r.action,status:r.status,detail:r.detail,deliverAt:new Date(r.due).toISOString(),expiresAt:new Date(r.expires).toISOString()});
  app.get('/api/agent/wrist',opts,async(req,reply)=>{
    if(!agent(req,reply))return;
    const now=Date.now();clean(now);
@@ -65,6 +73,8 @@ export function registerWrist(app:FastifyInstance,db:DatabaseSync,auth:DeviceAut
    const input=envelope.safeParse(req.body);if(!input.success)return reply.code(400).send({error:'Invalid command envelope'});
    const x=input.data, spec=Object.hasOwn(actions,x.action)?actions[x.action]:undefined;
    const payload=spec?.safeParse(x.args);if(!payload?.success)return reply.code(400).send({error:'Unsupported action or arguments'});
+   if(x.action==='wake-at' && x.deliverAt!==undefined)
+     return reply.code(400).send({error:'Put the alarm time in args.at, without deliverAt'});
    const now=Date.now();clean(now);
    const existing=read(x.requestId);
    if(existing){
@@ -72,11 +82,21 @@ export function registerWrist(app:FastifyInstance,db:DatabaseSync,auth:DeviceAut
         (x.deliverAt && existing.due!==Date.parse(x.deliverAt)))return reply.code(409).send({error:'Request ID used for a different command'});
      return view(existing);
    }
-   const due=x.deliverAt?Date.parse(x.deliverAt):now;
+   let due=x.deliverAt?Date.parse(x.deliverAt):now;
+   let expires=due+(x.deliverAt?300000:90000);
+   if(x.action==='wake-at'){
+     const target=Date.parse(payload.data.at);
+     if(target<=now+30000 || target>now+30*86400000)
+       return reply.code(400).send({error:'Use a future whole-minute wake time within 30 days'});
+     // A Xiaomi one-shot alarm only stores HH:mm. Stage distant alarms until the
+     // last 23 hours, then let the phone verify the next local occurrence.
+     due=Math.max(now,target-23*3600000);
+     expires=target-15000;
+   }
    if(due<now-30000 || due>now+30*86400000)return reply.code(400).send({error:'Schedule up to 30 days ahead'});
    const count=db.prepare("SELECT count(*) AS n FROM private_wrist_commands WHERE status IN ('queued','claimed')").get();
    if(Number(count?.n)>=100)return reply.code(429).send({error:'Wrist queue full'});
-   db.prepare('INSERT INTO private_wrist_commands(id,action,args,due,expires) VALUES(?,?,?,?,?)').run(x.requestId,x.action,JSON.stringify(payload.data),due,due+(x.deliverAt?300000:90000));
+   db.prepare('INSERT INTO private_wrist_commands(id,action,args,due,expires) VALUES(?,?,?,?,?)').run(x.requestId,x.action,JSON.stringify(payload.data),due,expires);
    wake?.();return reply.code(202).send(view(read(x.requestId)!));
  });
  app.get<{Params:{id:string}}>('/api/agent/wrist/:id',opts,async(req,reply)=>{
@@ -107,7 +127,9 @@ export function registerWrist(app:FastifyInstance,db:DatabaseSync,auth:DeviceAut
     if(!parsed.data.connected){await pause(12000);return {command:null};}
     for(let i=0;i<5 && !req.raw.socket.destroyed && generation===pollGeneration;i++){
       const now=Date.now();
-      const next=db.prepare("SELECT * FROM private_wrist_commands WHERE status='queued' AND due<=? AND expires>=? ORDER BY due LIMIT 1").get(now,now) as Row|undefined;
+      const supportsWake=req.headers['x-hibi-wrist-version']==='2';
+      const next=db.prepare(`SELECT * FROM private_wrist_commands WHERE status='queued' AND due<=? AND expires>=?
+        AND (action NOT IN ('wake-at','wake-ring') OR ?) ORDER BY due LIMIT 1`).get(now,now,Number(supportsWake)) as Row|undefined;
       if(next && db.prepare("UPDATE private_wrist_commands SET status='claimed',claimed=? WHERE id=? AND status='queued'").run(now,next.id).changes){
         return {command:{id:next.id,action:next.action,args:JSON.parse(next.args),expiresAt:next.expires}};
       }
@@ -118,11 +140,23 @@ export function registerWrist(app:FastifyInstance,db:DatabaseSync,auth:DeviceAut
     }
     return {command:null};
  });
- const receipt=z.object({id:z.string().uuid(),status:z.enum(['sent','confirmed','unconfirmed','failed','offline','rejected','expired']),detail:z.string().max(1800)}).strict();
+ const receipt=z.object({id:z.string().uuid(),status:z.enum(['sent','confirmed','unconfirmed','failed','offline','rejected','expired']),detail:z.string().max(1800),wakeMode:z.literal('reminder').optional()}).strict();
  app.post('/api/devices/wrist/receipt',opts,async(req,reply)=>{
     if(!phone(req,reply))return;const parsed=receipt.safeParse(req.body);if(!parsed.success)return reply.code(400).send({error:'Invalid receipt'});
     const r=read(parsed.data.id);if(!r || r.claimed===null)return reply.code(404).send({error:'Not claimed'});
-    if(r.status==='claimed'||r.status==='unconfirmed')db.prepare('UPDATE private_wrist_commands SET status=?,detail=? WHERE id=?').run(parsed.data.status,parsed.data.detail,r.id);
+    if(r.status!=='claimed' && r.status!=='unconfirmed')return {ok:true};
+    db.exec('BEGIN IMMEDIATE');
+    try{
+      db.prepare('UPDATE private_wrist_commands SET status=?,detail=? WHERE id=?').run(parsed.data.status,parsed.data.detail,r.id);
+      if(r.action==='wake-at' && parsed.data.status==='confirmed' && parsed.data.wakeMode==='reminder'){
+        const id=randomUUID(), at=Date.parse(JSON.parse(r.args).at);
+        db.prepare('INSERT INTO private_wrist_commands(id,action,args,due,expires) VALUES(?,?,?,?,?)')
+          .run(id,'wake-ring','{}',at,at+90000);
+        db.prepare('INSERT INTO private_wrist_wake_followup(parent,command_id) VALUES(?,?)').run(r.id,id);
+      }
+      db.exec('COMMIT');
+    }catch(error){db.exec('ROLLBACK');throw error}
+    wake?.();
     return {ok:true};
  });
 }

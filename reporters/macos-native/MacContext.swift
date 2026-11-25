@@ -8,6 +8,7 @@ struct MacContext: Codable {
     var appId: String?
     var windowTitle: String?
     var desktop: Int?
+    var audioOutputApps: [String]?
 }
 
 // Match the single active space to the current space on its display. Desktop
@@ -61,6 +62,7 @@ private final class ContextSessionDelegate: NSObject, URLSessionTaskDelegate {
     let clock = ISO8601DateFormatter()
     private var request: URLSessionDataTask?
     private var sequence = 0
+    private var retryAudioAfter = Date.distantPast
     private lazy var session: URLSession = {
         let config = URLSessionConfiguration.ephemeral
         config.urlCache = nil
@@ -120,13 +122,17 @@ private final class ContextSessionDelegate: NSObject, URLSessionTaskDelegate {
             sessionInfo?[kCGSessionOnConsoleKey as String] as? Bool == false
         guard !hidden else { return MacContext(sampledAt: stamp, state: "locked") }
         let idle = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: UInt32.max)!)
-        guard idle < 300, let app = NSWorkspace.shared.frontmostApplication else { return MacContext(sampledAt: stamp, state: "idle") }
+        let output = MacAudioOutput.applicationIDs()
+        guard idle < 300, let app = NSWorkspace.shared.frontmostApplication else {
+            return MacContext(sampledAt: stamp, state: "idle", audioOutputApps: output)
+        }
         if app.bundleIdentifier == "com.apple.loginwindow" { return MacContext(sampledAt: stamp, state: "locked") }
         var value = MacContext(sampledAt: stamp, state: "active")
         value.appName = Self.trimmed(app.localizedName ?? app.bundleIdentifier, max: 160)
         value.appId = Self.trimmed(app.bundleIdentifier, max: 255)
         value.windowTitle = Self.title(for: app.processIdentifier)
         value.desktop = DesktopNumber.current()
+        value.audioOutputApps = output
         return value
     }
 
@@ -134,19 +140,29 @@ private final class ContextSessionDelegate: NSObject, URLSessionTaskDelegate {
         sequence += 1
         let revision = sequence
         request?.cancel()
+        var outbound = value
+        if Date() < retryAudioAfter { outbound.audioOutputApps = nil }
         guard let config, let url = URL(string: config.serverUrl + "/api/devices/mac-context"),
               url.scheme == "https", url.user == nil, url.password == nil, !config.token.isEmpty,
-              let body = try? JSONEncoder().encode(value) else { completion(nil); return }
+              let body = try? JSONEncoder().encode(outbound) else { completion(nil); return }
         var post = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 5)
         post.httpMethod = "POST"
         post.setValue("Bearer " + config.token, forHTTPHeaderField: "Authorization")
         post.setValue("application/json", forHTTPHeaderField: "Content-Type")
         post.httpBody = body
+        let includesAudio = outbound.audioOutputApps != nil
         request = session.dataTask(with: post) { [weak self] _, response, _ in
             Task { @MainActor in
                 guard let self, revision == self.sequence else { return }
                 self.request = nil
-                completion((response as? HTTPURLResponse)?.statusCode)
+                let code = (response as? HTTPURLResponse)?.statusCode
+                if code == 400, includesAudio {
+                    // Older collectors reject unknown fields. Keep reporting with their schema.
+                    self.retryAudioAfter = Date().addingTimeInterval(300)
+                    self.upload(value, config: config, completion: completion)
+                    return
+                }
+                completion(code)
             }
         }
         request?.resume()

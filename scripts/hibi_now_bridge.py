@@ -86,6 +86,17 @@ def render(body):
             if old and last:
                 desc += ' ' + last.astimezone(LOCAL).strftime('%m-%d %H:%M')
         lines.append(f'{name}　{desc}；上次上报 {reports}')
+    mac = body.get('mac') or {}
+    audio_apps = mac.get('audioOutputApps') or []
+    if audio_apps:
+        lines.append('Mac 音频输出　' + '、'.join(display_app(app) for app in audio_apps))
+    playback = mac.get('lastPlaybackEvent') or {}
+    if playback.get('occurredAt'):
+        player_state = {'playing':'播放','paused':'暂停','stopped':'停止'}.get(playback.get('state'), '')
+        lines.append('上次播放事件　' + display_app(playback.get('player')) + ' ' + player_state + ' · ' + seen(playback['occurredAt'], checked))
+    location = body.get('phoneLocation') or {}
+    if location.get('sampledAt'):
+        lines.append('手机位置　' + seen(location['sampledAt'], checked) + '；综合只读接口可查坐标及误差')
     wrist = body.get('wristBattery') or {}
     if type(wrist.get('percent')) is int and 0 <= wrist['percent'] <= 100:
         mode = {'charging':'充电中','discharging':'使用电池','full':'已充满'}.get(wrist.get('powerMode'),'')
@@ -93,6 +104,12 @@ def render(body):
     hr, steps = body.get('heartRate') or {}, body.get('stepsToday') or {}
     sleep, night = body.get('currentSleep') or {}, body.get('lastCompletedSleep') or {}
     lines += ['', '身体记录']
+    oxygen = body.get('oxygenSaturation') or {}
+    if isinstance(oxygen.get('percent'), int):
+        lines.append(f"最近血氧　{oxygen['percent']}% · {seen(oxygen.get('sampledAt'), checked)}")
+    distance = body.get('distance') or {}
+    if isinstance(distance.get('meters'), (float,int)):
+        lines.append(f"今日已记录距离　{distance['meters']:g} 米 · 最近采样 {seen(distance.get('lastSampleAt'), checked)}")
     bpm = hr.get('bpm')
     label = '最近一次心率' if hr.get('confidence') != 'fresh' else '心率'
     lines.append(f'{label}　{bpm:g} 次/分 · {seen(hr.get("sampledAt"), checked)}'

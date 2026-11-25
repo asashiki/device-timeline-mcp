@@ -62,7 +62,7 @@ class BandReadService : Service() {
                 if(channel==null) ControlResult("offline","手环尚未连接")
                 else controlLock.withLock {
                     if(session !== channel) ControlResult("offline","手环连接已中断")
-                    else withTimeout(12000){ BandActions.execute(applicationContext,channel,action,org.json.JSONObject(raw)) }
+                    else withTimeout(if (action == "wake-ring") 35000L else 12000L){ BandActions.execute(applicationContext,channel,action,org.json.JSONObject(raw)) }
                 }
             } catch(e:TimeoutCancellationException){ControlResult("unconfirmed","手环未回执")}
               catch(e:CancellationException){throw e}

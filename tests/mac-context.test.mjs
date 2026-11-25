@@ -30,7 +30,7 @@ test('context grants are isolated and a window never enters logs or the public t
   const now=Date.now();
   const stamp=n=>new Date(now+n).toISOString();
   const title='private-window-sentinel';
-  const active={sampledAt:stamp(-1000),state:'active',appName:'Notes',appId:'com.apple.Notes',windowTitle:title,desktop:2};
+  const active={sampledAt:stamp(-1000),state:'active',appName:'Notes',appId:'com.apple.Notes',windowTitle:title,desktop:2,audioOutputApps:["org.example.Player"]};
   assert.equal((await read(key.context)).json().mac.state,'unknown');
   assert.equal((await post(key.context,active)).statusCode,401);
   assert.equal((await post(key.phone,active)).statusCode,403);
@@ -40,6 +40,11 @@ test('context grants are isolated and a window never enters logs or the public t
   assert.match(granted.headers['cache-control'],/private, no-store/);
   assert.equal(granted.json().mac.windowTitle,title);
   assert.equal(granted.json().mac.desktop,2);
+  assert.deepEqual(granted.json().mac.audioOutputApps,['org.example.Player']);
+  assert.equal((await post(key.mac,{state:'idle',sampledAt:stamp(-500),audioOutputApps:[]})).statusCode,202);
+  assert.deepEqual((await read(key.context)).json().mac.audioOutputApps,[]);
+  assert.equal((await post(key.mac,{state:'locked',sampledAt:stamp(0),audioOutputApps:['org.example.Player']})).statusCode,400);
+  assert.equal((await post(key.mac,{state:'idle',sampledAt:stamp(0),audioOutputApps:['/private/path']})).statusCode,400);
   assert.ok(granted.json().heartRate);
   assert.equal('mac' in (await read(key.body)).json(),false);
   assert.equal('devices' in (await read(key.body)).json(),false);
@@ -51,7 +56,7 @@ test('context grants are isolated and a window never enters logs or the public t
   assert.equal((await post(key.mac,{state:'paused',sampledAt:stamp(0)})).statusCode,202);
   await post(key.mac,active); // reordered in-flight POST after pause.
   const paused=(await read(key.context)).json().mac;
-  assert.equal(paused.state,'paused');assert.equal(paused.windowTitle,null);assert.equal(paused.appName,null);
+  assert.equal(paused.audioOutputApps,null);assert.equal(paused.state,'paused');assert.equal(paused.windowTitle,null);assert.equal(paused.appName,null);
   const visible=await app.inject({url:'/api/devices/timeline-query?date=2026-01-02'});
   assert.equal(visible.statusCode,200);
   assert.ok(!visible.body.includes(title));

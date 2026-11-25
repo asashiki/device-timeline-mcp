@@ -26,5 +26,8 @@ export function createWristMcp(base: string, token: string) {
   server.tool("band_notify","Display a short reminder on the owner's band, now or at a specified time.",
     {...common,title:z.string().max(64).default("Hibi"),text:z.string().min(1).max(240)}, {readOnlyHint:false,destructiveHint:false},
     ({at,requestId,title,text})=>call("",{action:"notify",args:{title,text},requestId:requestId??randomUUID(),deliverAt:at}));
+  server.tool("band_wake_at", "Set a native one-time wrist alarm. at is the time to wake, including offset, at whole-minute precision. Check band_receipt: confirmed means the alarm was read back from the band; queued is not armed yet.",
+    {at:z.string().datetime({offset:true}), requestId:common.requestId}, {readOnlyHint:false,destructiveHint:false},
+    ({at,requestId})=>call("",{action:"wake-at",args:{at},requestId:requestId??randomUUID()}));
   return server;
 }

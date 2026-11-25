@@ -30,7 +30,7 @@ object BandControls {
       return if(id==null)schedule(15,message {message(14,detail)}) else schedule(17,message {message(15,message {varint(1,id.toLong());message(2,detail)})})
     }
     fun remove(reminder:Boolean,id:Int):WearPacket {
-      require(id in 1..255);return schedule(if(reminder)18 else 4,message {message(if(reminder)17 else 5,message {varint(1,id.toLong())})})
+      require(id in 0..255);return schedule(if(reminder)18 else 4,message {message(if(reminder)17 else 5,message {varint(1,id.toLong())})})
     }
     fun sleepSchedule(on:Boolean,h:Int,m:Int,eh:Int,em:Int)=schedule(9,message {message(9,message {
         bool(1,on);message(2,message {message(1,hm(h,m));message(2,hm(eh,em));varint(3,0)})
@@ -62,6 +62,37 @@ object BandControls {
         val ints=mutableMapOf<Int,MutableList<Long>>();val bytes=mutableMapOf<Int,MutableList<ByteArray>>()
         val r=ProtoReader(raw);while(r.hasNext()){val n=r.nextField();when(r.lastWireType){0->ints.getOrPut(n){mutableListOf()}.add(r.readVarint());2->bytes.getOrPut(n){mutableListOf()}.add(r.readBytes());else->r.skip()}}
         return Fields(ints,bytes)
+    }
+    data class AlarmSlot(val id: Int, val hour: Int, val minute: Int, val enabled: Boolean, val repeat: Int, val smart: Boolean)
+    data class AlarmList(val max: Int?, val slots: List<AlarmSlot>)
+
+    fun alarmList(raw: ByteArray): AlarmList? {
+        val list = fields(raw).nested(1).singleOrNull() ?: return null
+        val slots = list.nested(1).map { row ->
+            val id = row.num(1)?.takeIf { it in 0L..255L } ?: return null
+            val detail = row.nested(2).singleOrNull() ?: return null
+            val time = detail.nested(2).singleOrNull() ?: return null
+            val h = (time.num(1) ?: 0L).takeIf { it in 0L..23L } ?: return null
+            val m = (time.num(2) ?: 0L).takeIf { it in 0L..59L } ?: return null
+            AlarmSlot(id.toInt(), h.toInt(), m.toInt(), detail.num(5) == 1L,
+                detail.num(3)?.toInt() ?: 0, detail.num(7) == 1L)
+        }
+        if (slots.distinctBy { it.id }.size != slots.size) return null
+        return AlarmList(list.num(2)?.toInt(), slots)
+    }
+    data class LocalReminder(val id: Int, val time: Instant, val title: String, val once: Boolean)
+    fun reminders(raw: ByteArray): List<LocalReminder>? {
+        val list = fields(raw).nested(10).singleOrNull() ?: return null
+        return list.nested(1).map { row ->
+            val id = row.num(1)?.takeIf { it in 0L..255L } ?: return null
+            val detail = row.nested(2).singleOrNull() ?: return null
+            val date = detail.nested(1).singleOrNull() ?: return null
+            val time = detail.nested(2).singleOrNull() ?: return null
+            val instant = runCatching { LocalDateTime.of(date.num(1)!!.toInt(), date.num(2)!!.toInt(),
+                date.num(3)!!.toInt(), (time.num(1) ?: 0).toInt(), (time.num(2) ?: 0).toInt(),
+                (time.num(3) ?: 0).toInt()).toInstant(ZoneOffset.UTC) }.getOrNull() ?: return null
+            LocalReminder(id.toInt(), instant, detail.text(5) ?: "", (detail.num(3) ?: 0) == 0L)
+        }
     }
     fun scheduleRows(raw:ByteArray,reminders:Boolean):List<String>? {
         val list=fields(raw).nested(if(reminders)10 else 1).firstOrNull()?:return null

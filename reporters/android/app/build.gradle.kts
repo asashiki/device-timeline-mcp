@@ -13,8 +13,8 @@ android {
         applicationId = "com.devicetimeline.agent"
         minSdk = 28
         targetSdk = 36
-        versionCode = (project.findProperty("versionCode") as String?)?.toIntOrNull() ?: 43
-        versionName = (project.findProperty("versionName") as String?) ?: "1.0.43"
+        versionCode = (project.findProperty("versionCode") as String?)?.toIntOrNull() ?: 44
+        versionName = (project.findProperty("versionName") as String?) ?: "1.0.44"
     }
 
     // Optional release signing: pass -PkeystorePath=… (plus password/alias) in CI.
@@ -31,8 +31,15 @@ android {
     }
 
     buildTypes {
+        debug {
+            // The locally signed package also serves as the on-device diagnostic build.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -58,6 +65,8 @@ android {
 
     packaging {
         resources {
+            // Only Bouncy Castle's AES-CCM primitive is used. These PQC test matrices are unrelated.
+            excludes += "org/bouncycastle/pqc/crypto/picnic/**"
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
             excludes += "META-INF/versions/9/OSGI-INF/MANIFEST.MF"
         }
@@ -65,12 +74,11 @@ android {
 }
 
 dependencies {
+    constraints { implementation("com.google.errorprone:error_prone_annotations:2.18.0") }
     implementation(project(":hibi-band"))
     implementation(platform("androidx.compose:compose-bom:2024.09.03"))
     implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
-    implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.activity:activity-compose:1.9.2")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.6")
@@ -82,5 +90,4 @@ dependencies {
 
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
-    debugImplementation("androidx.compose.ui:ui-tooling")
 }

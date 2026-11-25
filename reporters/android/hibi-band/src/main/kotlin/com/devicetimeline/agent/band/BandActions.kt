@@ -26,14 +26,15 @@ internal object BandActions {
             val info=DeviceInfoRequest(ch).fetchInfo(6000)
             return ControlResult("confirmed","${info.model} · ${info.firmwareVersion}")
         }
-        if(action=="buzz"){
+        if (action == "wake-at") return setWakeAlarm(ch, Instant.parse(args.getString("at")))
+        if(action=="buzz" || action=="wake-ring"){
             // The find command has a stop counterpart. Always stop after a short burst.
-            val sec=args.optInt("seconds",1).coerceIn(1,6)
+            val sec = if (action == "wake-ring") 30 else args.optInt("seconds",1).coerceIn(1,6)
             ch.send(Wire.find(true))
             try { delay(sec*1000L) } finally { withContext(NonCancellable){withTimeout(2500){ch.send(Wire.find(false))}} }
             return ControlResult("sent","已发送震动和停止指令")
         }
-        val id=args.optInt("id",-1).takeIf { it in 1..255 }
+        val id=args.optInt("id",-1).takeIf { it in 0..255 }
         val packet=when(action){
             "find-stop"->Wire.find(false)
             "notify"->Wire.notification(args.optInt("notificationId",System.currentTimeMillis().toInt()),args.optString("title","Hibi"),args.getString("text"),ctx.packageName)
@@ -62,6 +63,70 @@ internal object BandActions {
         val answer=if(data!=null) summarize(action,data) else null
         if(action in queries && answer==null)return ControlResult("unconfirmed","收到应答，当前固件未提供可读结果")
         return ControlResult("confirmed",answer?:"手环已回执")
+    }
+    private suspend fun readAlarms(ch: WearPacketChannel): Wire.AlarmList? {
+        val query = Wire.get("alarms")
+        val reply = withTimeoutOrNull(2600) {
+            ch.request(query, 3000) { it.type == query.type && it.id == query.id }
+        } ?: return null
+        if ((reply.errorCode ?: 0) != 0) return null
+        return reply.scheduleRaw?.let(Wire::alarmList)
+    }
+
+    private suspend fun setWakeAlarm(ch: WearPacketChannel, target: Instant): ControlResult {
+        val zone = java.time.ZoneId.systemDefault()
+        val local = target.atZone(zone)
+        // A one-shot alarm has no date. Refuse a different next occurrence or a repeated DST hour.
+        fun canSet(): Boolean {
+            val now = Instant.now().atZone(zone)
+            val hourMinute = local.toLocalTime()
+            var date = now.toLocalDate()
+            if (!hourMinute.isAfter(now.toLocalTime())) date = date.plusDays(1)
+            val next = date.atTime(hourMinute)
+            return local.second == 0 && local.nano == 0 && zone.rules.getValidOffsets(next).size == 1 &&
+                next.atZone(zone).toInstant() == target && target.isAfter(now.toInstant().plusSeconds(10))
+        }
+        if (!canSet()) return ControlResult("rejected", "这次手环闹钟无法在指定日期和时间响起")
+        val before = readAlarms(ch) ?: return ControlResult("unconfirmed", "未能读取手环闹钟，尚未写入")
+        val time = local.format(java.time.format.DateTimeFormatter.ofPattern("MM-dd HH:mm"))
+        fun matches(slot: Wire.AlarmSlot) = slot.hour == local.hour && slot.minute == local.minute &&
+            slot.enabled && slot.repeat == 0 && !slot.smart
+        before.slots.firstOrNull(::matches)?.let {
+            return ControlResult("confirmed", "$time 已有启用的一次闹钟 #${it.id}")
+        }
+        val max = before.max
+        if (max != null && before.slots.size >= max)
+            return setWakeReminder(ch, target, time)
+        if (!canSet()) return ControlResult("expired", "已过写入时间")
+        val create = Wire.alarm(local.hour, local.minute, 0)
+        val ack = withTimeoutOrNull(2200) {
+            ch.request(create, 2500) { it.type == create.type && it.id == create.id }
+        }
+        if ((ack?.errorCode ?: 0) != 0)
+            return ControlResult("rejected", "手环拒绝设置闹钟")
+        // Firmware may acknowledge the transport before its list is updated, or omit the create ack.
+        val oldIds = before.slots.map { it.id }.toSet()
+        repeat(2) {
+            val created = readAlarms(ch)?.slots?.singleOrNull { it.id !in oldIds && matches(it) }
+            if (created != null) return ControlResult("confirmed", "$time 已存入手环，一次闹钟 #${created.id}")
+            if (it == 0) delay(300)
+        }
+        return ControlResult("unconfirmed", "已请求设置，但未从手环读回对应闹钟")
+    }
+    private suspend fun setWakeReminder(ch: WearPacketChannel, target: Instant, time: String): ControlResult {
+        val title = "Hibi 起床"
+        val packet = Wire.reminder(target, title)
+        val ack = withTimeoutOrNull(2200) { ch.request(packet, 2500) { it.type == packet.type && it.id == packet.id } }
+        if ((ack?.errorCode ?: 0) != 0) return ControlResult("rejected", "闹钟已满，手环也拒绝了起床日程")
+        val query = Wire.get("reminders")
+        repeat(2) {
+            val reply = withTimeoutOrNull(2200) { ch.request(query, 2500) { it.type == query.type && it.id == query.id } }
+            val reminder = reply?.takeIf { (it.errorCode ?: 0) == 0 }?.scheduleRaw?.let(Wire::reminders)
+                ?.firstOrNull { it.time == target && it.title == title && it.once }
+            if (reminder != null) return ControlResult("wake-reminder", "已存入手环日程 #${reminder.id}，$time 起床；闹钟已满，到点连着手机可另震 30 秒")
+            if (it == 0) delay(300)
+        }
+        return ControlResult("unconfirmed", "闹钟已满，手环尚未回传这条起床日程")
     }
     private fun summarize(action:String,raw:ByteArray):String? {
         if(action in setOf("alarms","reminders")){

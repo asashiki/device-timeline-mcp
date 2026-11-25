@@ -39,6 +39,7 @@ class TrackingService : Service() {
     private var trackingJob: Job? = null
     private var healthSyncJob: Job? = null
     private var bandJob: Job? = null
+    private var locationJob: Job? = null
     private var lastHealthSyncAt = 0L
     private var serviceStartedAt = 0L
     private var lastIconState: AppIconManager.IconState? = null
@@ -79,6 +80,12 @@ class TrackingService : Service() {
                 WatchdogWorker.enqueue(applicationContext)
                 startTrackingIfNeeded()
                 updateBandJob()
+                if (PhoneLocation.enabled(this) && PhoneLocation.hasPermission(this)) {
+                    if (locationJob?.isActive != true) locationJob = serviceScope.launch { PhoneLocation(applicationContext).run() }
+                } else {
+                    locationJob?.cancel()
+                    locationJob = null
+                }
                 return START_STICKY
             }
             else -> return START_STICKY
@@ -154,7 +161,7 @@ class TrackingService : Service() {
     // not, because the FGS is what keeps the process alive. (HealthSyncWorker
     // remains as a fallback + the "立即同步" button.)
     private fun startHealthSyncLoop() {
-        if (healthSyncJob?.isActive == true) return
+        if (healthSyncJob?.isActive == true || !settingsStore.load().hcSyncEnabled) return
         healthSyncJob = serviceScope.launch {
             delay(INITIAL_HEALTH_SYNC_DELAY_MS)
             while (isActive) {
@@ -330,6 +337,8 @@ class TrackingService : Service() {
         bandJob = null
         trackingJob?.cancel()
         trackingJob = null
+        locationJob?.cancel()
+        locationJob = null
         healthSyncJob?.cancel()
         healthSyncJob = null
         lastHealthSyncAt = 0L

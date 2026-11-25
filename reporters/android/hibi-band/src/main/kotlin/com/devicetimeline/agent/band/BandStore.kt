@@ -13,7 +13,7 @@ import java.time.Instant
 import java.security.MessageDigest
 
 /** Keep raw received minutes and pending uploads in the same transaction, outside Android backup. */
-internal class BandStore(context: Context) : SQLiteOpenHelper(context, java.io.File(context.noBackupFilesDir, "band.sqlite").absolutePath, null, 4) {
+internal class BandStore(context: Context) : SQLiteOpenHelper(context, java.io.File(context.noBackupFilesDir, "band.sqlite").absolutePath, null, 5) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE frames(hash TEXT PRIMARY KEY,id_time INTEGER NOT NULL, version INTEGER NOT NULL, tz INTEGER NOT NULL, type INTEGER NOT NULL, bytes BLOB NOT NULL)")
         db.execSQL("CREATE INDEX frame_id ON frames(id_time,version,tz,type)")
@@ -32,14 +32,21 @@ internal class BandStore(context: Context) : SQLiteOpenHelper(context, java.io.F
         db.execSQL("CREATE TABLE sleep_poll(peer TEXT NOT NULL, start INTEGER NOT NULL, poll TEXT NOT NULL, observed INTEGER NOT NULL, counter INTEGER, endpoint INTEGER, PRIMARY KEY(peer,start))")
     }
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        check(oldVersion in 1..3 && newVersion == 4)
+        check(oldVersion in 1..4 && newVersion == 5)
         if (oldVersion == 1) replaySleepV1(db)
         if (oldVersion < 3) addProgressSchema(db)
         val now = System.currentTimeMillis()/1000L
-        db.rawQuery("SELECT bytes FROM frames WHERE type=33 AND version=4 ORDER BY rowid", null).use { rows ->
+        if (oldVersion < 4) db.rawQuery("SELECT bytes FROM frames WHERE type=33 AND version=4 ORDER BY rowid", null).use { rows ->
             while (rows.moveToNext()) {
                 val frame = FitnessFileFrame.parse(rows.getBlob(0)) ?: continue
                 BandSleep.provisional(frame, now)?.let { storeSleep(db, it, "sleep_band_interval") }
+            }
+        }
+        // Replay saved minute files once. Preserve acknowledged historical heart and step samples.
+        db.rawQuery("SELECT bytes FROM frames WHERE type=0 ORDER BY rowid", null).use { rows ->
+            while (rows.moveToNext()) {
+                val frame = FitnessFileFrame.parse(rows.getBlob(0)) ?: continue
+                storeMinutes(db, frame, now, extendedOnly = true)
             }
         }
     }
@@ -132,50 +139,59 @@ internal class BandStore(context: Context) : SQLiteOpenHelper(context, java.io.F
                 db.setTransactionSuccessful()
                 return saved + added
             }
-            val valid = FitnessDailyRecordParser.parseValid(frame.bitmap, frame.dataId.version)
-            val stride = FitnessDailyRecordParser.recordLength(valid)
-            var count = 0
-            // Upstream v1 layout is unverified. Retain raw bytes even when no measurement is usable.
-            if (frame.dataId.version in 2..5 && stride > 0 && frame.body.size % stride == 0) {
-                // Use UPDATE/INSERT OR IGNORE rather than UPSERT for the oldest
-                // Android versions supported by Hibi (system SQLite before 3.24).
-                val change = db.compileStatement("UPDATE samples SET value=?, uploaded=0 WHERE kind=? AND at=? AND value!=?")
-                val insert = db.compileStatement("INSERT OR IGNORE INTO samples(kind,at,value,uploaded) VALUES(?,?,?,0)")
-                try {
-                    FitnessDailyRecordParser.parse(frame).forEachIndexed { i, values ->
-                        val at = frame.dataId.timestamp + i * 60L
-                        if (at !in 946684800L..now) return@forEachIndexed
-                        // Field presence/validity comes from the band's own bitmap. A missing step field must never become 0.
-                        for ((kind, v) in listOf("heart_rate" to values[FitnessDailyRecordParser.ItemType.HR],
-                            "steps" to values[FitnessDailyRecordParser.ItemType.STEPS])) {
-                            if (v == null || (kind == "heart_rate" && v !in 1L..254L) ||
-                                (kind == "steps" && v !in 0L..0x3fffL)) continue
-                            change.bindLong(1, v)
-                            change.bindString(2, kind)
-                            change.bindLong(3, at)
-                            change.bindLong(4, v)
-                            if (change.executeUpdateDelete() > 0) {
-                                count++
-                            } else {
-                                insert.bindString(1, kind)
-                                insert.bindLong(2, at)
-                                insert.bindLong(3, v)
-                                if (insert.executeInsert() != -1L) count++
-                            }
-                        }
-                    }
-                } finally {
-                    change.close()
-                    insert.close()
-                }
-            }
+            val count = storeMinutes(db,frame,now)
             db.setTransactionSuccessful()
             return count
         } finally { db.endTransaction() }
     }
+
+    private fun storeMinutes(db: SQLiteDatabase, frame: FitnessFileFrame, now: Long, extendedOnly:Boolean=false):Int {
+        val valid = FitnessDailyRecordParser.parseValid(frame.bitmap, frame.dataId.version)
+        val stride = FitnessDailyRecordParser.recordLength(valid)
+        var count = 0
+        // Upstream v1 layout is unverified. Retain raw bytes even when no measurement is usable.
+        if (frame.dataId.version in 2..5 && stride > 0 && frame.body.size % stride == 0) {
+            // Use UPDATE/INSERT OR IGNORE rather than UPSERT for the oldest
+            // Android versions supported by Hibi (system SQLite before 3.24).
+            val change = db.compileStatement("UPDATE samples SET value=?, uploaded=0 WHERE kind=? AND at=? AND value!=?")
+            val insert = db.compileStatement("INSERT OR IGNORE INTO samples(kind,at,value,uploaded) VALUES(?,?,?,0)")
+            try {
+                FitnessDailyRecordParser.parse(frame).forEachIndexed { i, values ->
+                    val at = frame.dataId.timestamp + i * 60L
+                    if (at !in 946684800L..now) return@forEachIndexed
+                    // Field presence/validity comes from the band's own bitmap. A missing step field must never become 0.
+                    for ((kind, v) in listOf("heart_rate" to values[FitnessDailyRecordParser.ItemType.HR],
+                        "steps" to values[FitnessDailyRecordParser.ItemType.STEPS],
+                        "oxygen_saturation" to values[FitnessDailyRecordParser.ItemType.SPO2],
+                        "distance" to values[FitnessDailyRecordParser.ItemType.DISTANCE])) {
+                        if (extendedOnly && (kind == "steps" || kind == "heart_rate")) continue
+                        if (v == null || (kind == "oxygen_saturation" && v !in 1L..100L) ||
+                            (kind == "distance" && v !in 0L..4000L) || (kind == "heart_rate" && v !in 1L..254L) ||
+                            (kind == "steps" && v !in 0L..0x3fffL)) continue
+                        change.bindLong(1, v)
+                        change.bindString(2, kind)
+                        change.bindLong(3, at)
+                        change.bindLong(4, v)
+                        if (change.executeUpdateDelete() > 0) {
+                            count++
+                        } else {
+                            insert.bindString(1, kind)
+                            insert.bindLong(2, at)
+                            insert.bindLong(3, v)
+                            if (insert.executeInsert() != -1L) count++
+                        }
+                    }
+                }
+            } finally {
+                change.close()
+                insert.close()
+            }
+        }
+        return count
+    }
     private fun sample(row: Cursor): BandSample {
         val kind = row.getString(0)
-        val unit = when (kind) { "heart_rate" -> "bpm"; "steps" -> "count"; "sleep_session", "sleep_band_interval" -> "minutes"; "sleep_state", "sleep_interval_progress", "sleep_record_sample" -> "state"; "sleep_progress" -> "minutes"; else -> error("Unknown band metric") }
+        val unit = when (kind) { "heart_rate" -> "bpm"; "steps" -> "count"; "oxygen_saturation" -> "%"; "distance" -> "m"; "sleep_session", "sleep_band_interval" -> "minutes"; "sleep_state", "sleep_interval_progress", "sleep_record_sample" -> "state"; "sleep_progress" -> "minutes"; else -> error("Unknown band metric") }
         val meta = if(row.isNull(5)) null else org.json.JSONObject(row.getString(5))
         return BandSample(kind, row.getInt(2), unit, Instant.ofEpochSecond(row.getLong(1)).toString(),
             endAt = if (row.isNull(3)) null else Instant.ofEpochSecond(row.getLong(3)).toString(),
@@ -186,7 +202,11 @@ internal class BandStore(context: Context) : SQLiteOpenHelper(context, java.io.F
             previousMinutes=meta?.takeIf { it.has("previousMinutes") }?.getInt("previousMinutes"))
     }
     fun pending(limit: Int): List<BandSample> = readableDatabase.rawQuery(
-        "SELECT kind,at,value,end_at,asleep_min,progress_json FROM samples WHERE uploaded=0 ORDER BY CASE WHEN kind IN ('sleep_record_sample','sleep_state','sleep_interval_progress','sleep_progress') AND at>=CAST(strftime('%s','now') AS INTEGER)-300 THEN 0 ELSE 1 END,at,kind LIMIT ?", arrayOf(limit.coerceIn(1, 500).toString())
+        "SELECT kind,at,value,end_at,asleep_min,progress_json FROM samples WHERE uploaded=0 AND kind NOT IN ('oxygen_saturation','distance') ORDER BY CASE WHEN kind IN ('sleep_record_sample','sleep_state','sleep_interval_progress','sleep_progress') AND at>=CAST(strftime('%s','now') AS INTEGER)-300 THEN 0 ELSE 1 END,at,kind LIMIT ?", arrayOf(limit.coerceIn(1, 500).toString())
+    ).use { row -> buildList { while (row.moveToNext()) add(sample(row)) } }
+    fun pendingExtended(limit: Int): List<BandSample> = readableDatabase.rawQuery(
+        "SELECT kind,at,value,end_at,asleep_min,progress_json FROM samples WHERE uploaded=0 AND kind IN ('oxygen_saturation','distance') ORDER BY at DESC,kind LIMIT ?",
+        arrayOf(limit.coerceIn(1,200).toString())
     ).use { row -> buildList { while (row.moveToNext()) add(sample(row)) } }
     fun latest(): BandSample? = readableDatabase.rawQuery(
         "SELECT kind,at,value,end_at,asleep_min,progress_json FROM samples ORDER BY (kind='heart_rate') DESC, at DESC LIMIT 1", null

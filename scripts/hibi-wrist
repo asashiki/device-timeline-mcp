@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import sys
+import time
 import uuid
 from pathlib import Path
 from urllib import error, parse, request
@@ -38,7 +39,11 @@ def main():
         if args.value:
             ap.error("status takes no arguments")
     else:
-        if args.command == "notify":
+        if args.command == "wake-at":
+            if not args.value or args.at:
+                ap.error("wake-at needs one wake time with offset, e.g. 2026-12-01T07:00:00+08:00")
+            values = {"at": args.value}
+        elif args.command == "notify":
             if not args.value:
                 ap.error("provide the text to send")
             values = {"text": args.value}
@@ -51,9 +56,21 @@ def main():
             payload["deliverAt"] = args.at
         body, method = json.dumps(payload).encode(), "POST"
     req = request.Request(url, data=body, method=method, headers={
-        "User-Agent": "hibi-wrist/1.0", "Authorization": "Bearer " + token, "Content-Type": "application/json"})
+        "User-Agent": "hibi-wrist/1.0", "Authorization": "Bearer " + token,
+        **({"Content-Type": "application/json"} if body is not None else {})})
     with request.build_opener(NoRedirect()).open(req, timeout=12) as res:
-        print(json.dumps(json.load(res), ensure_ascii=False, indent=2))
+        result = json.load(res)
+    if args.command == "wake-at" and result.get("status") in ("queued", "claimed"):
+        from datetime import datetime
+        due = datetime.fromisoformat(result["deliverAt"].replace("Z", "+00:00")).timestamp()
+        if due <= time.time() + 1:
+            receipt = request.Request(url + "/" + result["id"], headers=req.headers)
+            deadline = time.monotonic() + 16
+            while time.monotonic() < deadline and result["status"] in ("queued", "claimed"):
+                time.sleep(1)
+                with request.build_opener(NoRedirect()).open(receipt, timeout=6) as res:
+                    result = json.load(res)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

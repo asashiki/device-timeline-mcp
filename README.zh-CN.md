@@ -81,6 +81,8 @@ npm run build && npm start      # 或：npm run dev
 
 `GET /api/agent/body-now` 返回最近心率、已有步数、上次睡眠及当前睡醒判断，并标注采样时间。身体只读凭据可查这些数据。使用综合只读凭据还能查各设备最近状态，以及 Mac 能提供的桌面和窗口信息。`GET /api/agent/body-range?from=…&to=…` 可查最多七天的已结束时段。最近五分钟内有手环睡眠记录或明确的入睡状态时显示「睡了」，其余默认「醒着」。按手环记录的时间判断。页面另列手环数据时间。
 
+手机开启位置记录后，综合只读接口的 `phoneLocation` 返回上次位置、采样时间和误差范围。时段查询的 `phoneLocations` 返回该时段的定位点。Mac 的 `audioOutputApps` 表示采样时正在输出音频的应用，`lastPlaybackEvent` 是 Apple Music 或 Spotify 最近报告的播放事件。手环分钟文件还可以提供血氧 `oxygenSaturation` 和距离 `distance`。
+
 可选的 Notion 接入支持按需刷新私有状态页。每日记录页按小时展开应用和身体记录，迟到的数据会补回发生的日期。安装步骤见 [Notion 与日报说明](scripts/README.md)。
 
 ## 三步上手
@@ -119,9 +121,9 @@ npm run build && npm start      # 或：npm run dev
 
 | 平台 | 源码 | 说明 |
 |---|---|---|
-| Android | [`reporters/android`](reporters/android) | 前台应用记录、可选健康连接与已配对手环采集 |
+| Android | [`reporters/android`](reporters/android) | 前台应用、电池、可选省电定位和手环记录 |
 | Windows | [`reporters/windows`](reporters/windows) | .NET 托盘程序，单文件 exe |
-| macOS | [原生客户端](reporters/macos-native) 或 [Python 采集端](reporters/macos) | 前台应用，原生版可上报电量和窗口状态 |
+| macOS | [原生客户端](reporters/macos-native) 或 [Python 采集端](reporters/macos) | 原生菜单栏记录前台应用、窗口、电量和音频输出应用 |
 | iOS | [`reporters/ios`](reporters/ios) | 快捷指令自动化（没有可安装的 app） |
 
 每个采集端使用自己的服务器地址与设备 token。安卓按前台切换事件和周期采样记录，Mac 原生版还会上报电量。iPhone 使用所选 App 的快捷指令事件。

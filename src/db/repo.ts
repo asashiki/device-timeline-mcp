@@ -1,7 +1,7 @@
 import { readSleepChecks } from './sleep-checks.js';
 import type { DatabaseSync } from "node:sqlite";
 import { onlineWindowSeconds, type DeviceToken, type Platform } from "../config.js";
-import { dayRangeUtc, toUtcIso } from "../time.js";
+import { dayRangeUtc, todayInTz, toUtcIso } from "../time.js";
 import { LIVE_HEALTH_DEVICE_ID, readLiveHealth } from "./live-health.js";
 import { MacContext } from "../mac-context.js";
 import { readBodyRange } from "./body-range.js";
@@ -128,6 +128,20 @@ export class Repository {
     private readonly graceSeconds: number,
   ) {}
 
+  recordLocation(deviceId: string, point: {latitude:number;longitude:number;accuracyMeters:number;sampledAt:string}) {
+    this.db.prepare(`INSERT OR IGNORE INTO private_phone_location
+      (device_id,sampled_at,latitude,longitude,accuracy_meters,received_at) VALUES(?,?,?,?,?,?)`)
+      .run(deviceId, point.sampledAt, point.latitude, point.longitude, point.accuracyMeters, new Date().toISOString());
+  }
+
+  phoneLocations(deviceId: string, from?: string, to?: string) {
+    const fields = 'latitude,longitude,accuracy_meters AS accuracyMeters,sampled_at AS sampledAt,received_at AS receivedAt';
+    if (from && to) return this.db.prepare(`SELECT ${fields} FROM private_phone_location
+      WHERE device_id=? AND sampled_at>=? AND sampled_at<? ORDER BY sampled_at`).all(deviceId,from,to);
+    return this.db.prepare(`SELECT ${fields} FROM private_phone_location
+      WHERE device_id=? ORDER BY sampled_at DESC LIMIT 1`).all(deviceId);
+  }
+
   recordPlayback(deviceId: string, event: PlaybackEvent): void {
     this.db.prepare(`INSERT INTO device_playback (device_id, player, state, track, artist, occurred_at)
         VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(device_id, player, occurred_at) DO NOTHING`)
@@ -149,6 +163,7 @@ export class Repository {
       currentSleep: { ...observed, evidenceState: observed.state, state },
       sleepRecordChecks: readSleepChecks(this.db, LIVE_HEALTH_DEVICE_ID),
       wristBattery: this.wristBattery(),
+      ...this.wearableMetrics(dayRangeUtc(todayInTz()).start,body.asOf, true),
     };
   }
 
@@ -161,8 +176,18 @@ export class Repository {
       measuredAt: new Date(Number(row.measured_at)).toISOString(),
       receivedAt: new Date(Number(row.received_at)).toISOString() };
   }
+  private wearableMetrics(from: string, to: string, includeLastOxygen = false) {
+    const oxygen = this.db.prepare(`SELECT value AS percent,recorded_at AS sampledAt FROM private_band_metrics
+      WHERE device_id=? AND type='oxygen_saturation' AND recorded_at>=? AND recorded_at<? ORDER BY recorded_at DESC LIMIT 1`)
+      .get(LIVE_HEALTH_DEVICE_ID,includeLastOxygen ? '' : from,to) ?? null;
+    const distance = this.db.prepare(`SELECT sum(value) AS meters,count(*) AS observedMinutes,max(recorded_at) AS lastSampleAt
+      FROM private_band_metrics WHERE device_id=? AND type='distance' AND recorded_at>=? AND recorded_at<?`)
+      .get(LIVE_HEALTH_DEVICE_ID,from,to);
+    return {oxygenSaturation:oxygen,distance};
+  }
+
   bodyRange(from: string, to: string, now: Date) {
-    return readBodyRange(this.db, LIVE_HEALTH_DEVICE_ID, from, to, now);
+    return {...readBodyRange(this.db, LIVE_HEALTH_DEVICE_ID, from, to, now), ...this.wearableMetrics(from,to)};
   }
 
   /** Local administrative import of a verified Mi Fitness log session. Replays are idempotent. */
@@ -186,7 +211,7 @@ export class Repository {
   }
 
   saveBandSamples(deviceId: string, records: ReadonlyArray<{
-    type: 'steps' | 'heart_rate'; value: number; recordedAt: string;
+    type: 'steps' | 'heart_rate' | 'oxygen_saturation' | 'distance'; value: number; recordedAt: string;
   } | {type: 'sleep_session'; value: number; recordedAt: string; valueJson:{endAt:string;asleepMinutes?:number|undefined}}
     | {type: 'sleep_record_sample'; value: number; recordedAt: string; valueJson:{sessionStart:string}}
     | {type: 'sleep_band_interval'; value: number; recordedAt: string; valueJson:{endAt:string}}
@@ -199,6 +224,9 @@ export class Repository {
       (device_id, type, value, recorded_at, received_at) VALUES (?, ?, ?, ?, ?)
       ON CONFLICT(device_id, type, recorded_at) DO UPDATE SET value=excluded.value, received_at=excluded.received_at
       WHERE value != excluded.value`);
+    const extra = this.db.prepare(`INSERT INTO private_band_metrics(device_id,type,value,recorded_at,received_at)
+      VALUES(?,?,?,?,?) ON CONFLICT(device_id,type,recorded_at) DO UPDATE SET value=excluded.value,received_at=excluded.received_at
+      WHERE value!=excluded.value`);
     const receivedAt = new Date().toISOString();
     const observation = this.db.prepare(`INSERT INTO band_sleep_observations
       (device_id,session_start,observed_at,state,sleep_minutes,origin,time_basis,received_at,previous_observed_at,previous_minutes)
@@ -233,7 +261,8 @@ export class Repository {
                           record.type === 'sleep_progress' ? record.value : null, proof.origin, proof.timeBasis, receivedAt,
                           phoneGrowth ? new Date(proof.previousObservedAt).toISOString() : null, phoneGrowth ? proof.previousMinutes : null);
         } else {
-          stmt.run(deviceId, record.type, record.value, start, receivedAt);
+          const target = record.type === 'oxygen_saturation' || record.type === 'distance' ? extra : stmt;
+          target.run(deviceId, record.type, record.value, start, receivedAt);
         }
       }
       this.db.exec('COMMIT');
@@ -458,6 +487,7 @@ export class Repository {
   purgeActivitiesOlderThan(days: number): number {
     if (!Number.isFinite(days) || days <= 0) return 0;
     const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    this.db.prepare('DELETE FROM private_phone_location WHERE sampled_at<?').run(cutoff);
     const result = this.db
       .prepare(`DELETE FROM device_activities WHERE started_at < ?`)
       .run(cutoff);

@@ -1,6 +1,6 @@
 # Hibi Mac
 
-Hibi Mac lives in the menu bar. It records foreground app activity and idle time, sends battery state, and can share current context through your collector's private endpoint. The dashboard can open your collector, its Notion view, and selected local apps.
+Hibi Mac lives in the menu bar. Click its clock icon to see the last successful sync, pause or resume recording, or quit. The collector receives foreground app changes, idle time, battery charge and power source.
 
 ## Install on your Mac
 
@@ -10,9 +10,11 @@ Install Apple's Command Line Tools if `swiftc` is missing. The installer also us
 ./install.sh
 ```
 
-On first install, enter your collector's HTTPS URL and the token assigned to this Mac. The installer stores the token in `~/.config/hibi/mac.json` with owner-only permissions. It installs `~/Applications/Hibi Mac.app` and starts a user LaunchAgent. Existing settings and the previous app are retained. Open **Hibi Mac** from the menu bar to pause or resume recording.
+On first install, enter your collector's HTTPS URL and the token assigned to this Mac. The installer stores the token in `~/.config/hibi/mac.json` with owner-only permissions. It installs `~/Applications/Hibi Mac.app` and starts a user LaunchAgent. Existing settings and the previous app are retained. The menu follows your macOS appearance.
 
-Optional: add `"toolNames": ["Calendar", "Notes"]` to your configuration to show launch buttons for installed apps. If you want current window titles, choose **允许读取窗口标题** in the app and enable Hibi Mac in System Settings. The title and desktop number go to the private current context endpoint. A named desktop is omitted when Mission Control cannot identify it. Music and Spotify playback use their local player notifications.
+For window titles, choose **允许读取窗口标题…** in the menu and enable Hibi Mac in System Settings. Hibi sends the current foreground app, available window title, and Mission Control desktop number to the private Mac context endpoint.
+
+On macOS 14.2 or later, the same private context includes the app identifiers of currently open audio output streams. This works when the screen is active or idle, and clears when locked or paused. Audio output activity can include silent streams. Apple Music and Spotify separately report play, pause and stop events with song and artist information when available. These events use the authenticated playback endpoint and survive temporary loss of connectivity.
 
 ```sh
 ./install.sh --build-only /tmp/hibi-preview

@@ -3,15 +3,18 @@ import { z } from "zod";
 export const MAC_CONTEXT_DEVICE_ID = process.env.HIBI_MAC_DEVICE_ID?.trim() || "mac-laptop";
 export const MAC_CONTEXT_TTL_MS = 75_000;
 const sampledAt = z.string().max(40).datetime({ offset: true });
+const audioOutputApps = z.array(z.string().max(255).regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/)).max(16).optional();
 export const macSnapshot = z.union([
   z.object({
     sampledAt, state: z.literal("active"), recentInputAt: sampledAt.optional().transform(() => undefined),
     appName: z.string().trim().min(1).max(160).optional(),
     appId: z.string().trim().min(1).max(255).optional(),
     windowTitle: z.string().trim().min(1).max(300).optional(),
+    audioOutputApps,
     desktop: z.number().int().min(1).max(128).optional(),
   }).strict(),
-  z.object({ sampledAt, state: z.enum(["idle", "locked", "paused"]) }).strict(),
+  z.object({ sampledAt, state: z.literal("idle"), audioOutputApps }).strict(),
+  z.object({ sampledAt, state: z.enum(["locked", "paused"]) }).strict(),
 ]);
 type Snapshot = z.infer<typeof macSnapshot>;
 
@@ -60,6 +63,7 @@ export class MacContext {
       appId: active?.appId ?? null,
       windowTitle: active?.windowTitle ?? null,
       desktop: active?.desktop ?? null,
+      audioOutputApps: row?.state === "active" || row?.state === "idle" ? row.audioOutputApps ?? null : null,
     };
   }
 }
