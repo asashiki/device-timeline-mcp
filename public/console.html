@@ -5,20 +5,31 @@
   <meta name="referrer" content="no-referrer"><meta name="color-scheme" content="light">
   <title>时间线 · Hibi 日々</title>
   <script>
-    if (location.hash.startsWith('#hibi-confirm=')) {
+    if (location.hash.startsWith('#hibi-view=')) {
+      (() => {
+        const key = location.hash.slice('#hibi-view='.length);
+        history.replaceState(null, '', location.pathname + location.search);
+        window.hibiViewReady = /^[A-Za-z0-9_-]{43}$/.test(key)
+          ? fetch('/api/console/view', {method:'POST', mode:'same-origin', credentials:'same-origin',
+              redirect:'error', cache:'no-store', referrerPolicy:'no-referrer', signal:AbortSignal.timeout(14000),
+              headers:{'Content-Type':'application/json'}, body:JSON.stringify({key})})
+              .then(response => response.ok, () => false)
+          : Promise.resolve(false);
+      })();
+    } else if (location.hash.startsWith('#hibi-confirm=')) {
       window.hibiConfirmation = location.hash.slice(14);
       history.replaceState(null, '', location.pathname + location.search);
     } else if (['#devices','#health-section','#storage-section'].includes(location.hash)) {
       location.replace('/live' + location.hash);
     }
   </script>
-  <link rel="stylesheet" href="/day.css"><script type="module" src="/day.js"></script>
+  <link rel="stylesheet" href="/day.css?v=private-view-1"><script type="module" src="/day.js?v=private-view-1"></script>
 </head>
 <body data-notion="unconfigured">
 <header class="mast"><div class="frame mast-inner">
  <a class="wordmark" href="/" aria-label="Hibi 首页"><span class="mark" aria-hidden="true"><i></i><i></i><i></i></span>Hibi <span lang="ja">日々</span></a>
  <nav aria-label="主导航"><a href="/" aria-current="page">时间线</a><a href="/live">实时状态</a></nav>
- <button type="button" class="access-btn" id="access">访问设置</button>
+
 </div></header>
 <main class="frame">
  <section class="day-heading">
@@ -31,6 +42,7 @@
   </div>
  </section>
  <p id="status" role="status" hidden></p>
+ <p id="entry-error" role="status" hidden></p>
  <section class="ruler-panel" aria-labelledby="ruler-title">
   <div class="ruler-top"><div><h2 id="ruler-title">设备活动</h2><p id="ruler-summary">读取当天记录…</p></div><div class="legend"><span><i></i>使用</span><span><i class="idle"></i>空闲</span><span><i class="point"></i>单次记录</span></div></div>
   <div class="ruler" id="ruler" aria-label="按小时查看设备记录"></div>
@@ -44,14 +56,14 @@
    <details id="ranking"><summary>应用使用时长</summary><div id="rank-list"></div></details>
    <div id="entries" aria-live="polite"></div><button class="more" type="button" id="more" hidden>显示更多</button>
   </section>
-  <aside><section class="entry-section" id="map-section"><div class="block-heading"><h3>位置记录</h3></div><div id="map"></div></section>
+  <aside><section class="entry-section" id="map-section"><div class="block-heading"><h3 id="map-title">位置记录</h3></div><div id="map"></div></section>
    <section class="entry-section" id="body-section"><div class="block-heading"><h3>身体记录</h3></div><div id="body"></div></section></aside>
  </div>
- <footer><a href="/live">查看实时设备和身体状态 ↗</a><span id="zone">北京时间</span></footer>
+ <footer><a href="/live">查看实时设备和身体状态 ↗</a><span class="footer-tools"><button id="signout" type="button" hidden>退出私人视图</button><span id="zone">北京时间</span></span></footer>
 </main>
-<dialog id="auth"><form method="dialog" class="dialog-top"><h2>访问设置</h2><button aria-label="关闭" class="close">×</button></form>
- <p id="auth-note">使用 Hibi 只读权限查看身体和位置记录。</p><button type="button" id="notion-pair" hidden>通过 Notion 授权</button>
- <form id="key-form"><label for="key">只读凭据</label><input id="key" type="password" required autocomplete="off"><button type="submit">在此浏览器查看</button></form>
- <button type="button" id="signout" hidden>取消此浏览器授权</button><p role="status" id="auth-state"></p>
+<dialog id="auth"><form method="dialog" class="dialog-top"><h2>查看私人记录</h2><button aria-label="关闭" class="close">×</button></form>
+ <button type="button" id="notion-pair" hidden>通过 Notion 打开</button>
+ <details id="manual"><summary>使用只读密钥</summary><form id="key-form"><label for="key">只读密钥</label><input id="key" type="password" required autocomplete="off"><button type="submit">查看记录</button></form></details>
+ <p role="status" id="auth-state"></p>
 </dialog>
 </body></html>

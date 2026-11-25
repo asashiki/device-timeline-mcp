@@ -30,7 +30,7 @@ body[data-notion="unconfigured"] .notion-only{display:none}
 </div>
 <p id="body-access-message" role="status"></p>
 <div class="healthgrid" id="health"></div>
-<button id="body-hide" type="button" hidden>取消本浏览器授权</button>
+<button id="body-hide" type="button" hidden>退出私人视图</button>
 </section><div class="columns"><section id="timeline-section"><div class="sectionhead"><h2>活动时间线</h2><span class="hint" id="rowcount"></span></div><div class="panel"><div class="controls"><input id="date" type="date" aria-label="选择历史日期"><select id="devicefilter" aria-label="筛选设备"><option value="">全部设备</option></select><button class="plain" id="backtoday">今天</button></div><div class="timeline" id="timeline"><div class="empty">正在读取时间线…</div></div></div></section><section><div class="sectionhead"><h2>时间花在哪里</h2><span class="hint">所选日期</span></div><div class="panel apps" id="apps"></div></section></div><section id="storage-section"><div class="sectionhead"><h2>数据保存</h2><span class="badge" id="storagebadge">读取中</span></div><div class="panel storage"><div><strong id="storagetitle">正在读取保存状态</strong><p id="storageinfo"></p><p>历史日期可在上方选择；没有记录的日期会明确显示为空。</p></div><button class="plain" id="export">导出当前时间线</button></div></section><div class="footer"><span>Hibi 日々 · 属于自己的记录</span><span id="updated">尚未更新</span></div><details><summary>连接设置</summary><input id="base" placeholder="服务器地址（通常无需填写）" aria-label="服务器地址"></details></main></div><script>
 const $=id=>document.getElementById(id);const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const tz='Asia/Shanghai';const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:tz,year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());const clock=s=>new Date(s).toLocaleTimeString('zh-CN',{timeZone:tz,hour:'2-digit',minute:'2-digit'});const day=s=>s?new Date(s).toLocaleDateString('zh-CN',{timeZone:tz}):'尚无记录';
@@ -74,6 +74,15 @@ const measuredAt = value => value && Number.isFinite(Date.parse(value)) ? stampF
 function setBodyNotice(message) {
   $('healthnotice').textContent=message;
   $('healthnotice').hidden=!message;
+}
+const entryPage = document.body.dataset.entryPage;
+if (entryPage) {
+  const link = document.createElement('a');
+  link.className='body-authorize';
+  link.textContent='从 Notion 打开 ↗';
+  link.href=entryPage;
+  link.onclick=()=>{try {localStorage.setItem('hibi-return-live',String(Date.now()));} catch {}};
+  $('body-gate').replaceChildren(link);
 }
 function closeBody() {
   bodyAuthorized=false;
@@ -161,7 +170,7 @@ async function loadBody() {
     setBodyNotice(bodyAuthorized?'身体记录暂时无法刷新，以下是上次读取的记录。':'暂时无法读取身体记录，请稍后刷新。');
   }
 }
-$('body-token-form').onsubmit=async event=>{
+if ($('body-token-form')) $('body-token-form').onsubmit=async event=>{
   event.preventDefault();
   if(changingSession) return;
   const token=$('body-token').value.trim();
@@ -183,7 +192,7 @@ $('body-token-form').onsubmit=async event=>{
     changingSession=false;
   }
 };
-$('body-authorize').onclick=async()=>{
+if ($('body-authorize')) $('body-authorize').onclick=async()=>{
   if(changingSession) return;
   ++bodyRequest; changingSession=true; $('body-authorize').disabled=true;
   $('body-access-message').textContent='正在打开 Notion…';

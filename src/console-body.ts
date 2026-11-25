@@ -6,7 +6,7 @@ import type { Repository } from "./db/repo.js";
 import { consoleDate, dayQuery, personalDay } from "./db/console-day.js";
 
 type ReadScope = "body" | "context";
-type ReadKeys = { bodyReadDigest?: Buffer; contextReadDigest?: Buffer };
+type ReadKeys = { bodyReadDigest?: Buffer; contextReadDigest?: Buffer; browserViewDigest?: Buffer };
 const COOKIE = "__Host-hibi_body";
 const PAIR_COOKIE = "__Secure-hibi_pair";
 const PAIR_TTL = 300_000;
@@ -103,6 +103,17 @@ export function registerConsoleBody(app: FastifyInstance, repo: Pick<Repository,
   for (const url of [sessionUrl,bodyUrl,dayUrl,pairUrl+"/start",pairUrl+"/confirm"]) {
     app.options(url, options, async (_req,reply) => reply.code(204).send());
   }
+
+  app.post("/api/console/view", options, async (req,reply) => {
+    if (!originAllowed(req)) return reply.code(403).send({error:"same-origin only"});
+    const key = (req.body as {key?: unknown} | null)?.key;
+    const digest = keys.browserViewDigest;
+    if (!digest || digest.length !== 32 || typeof key !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(key)
+      || !timingSafeEqual(createHash("sha256").update(key).digest(), digest)) {
+      return reply.code(401).send({error:"private timeline link required"});
+    }
+    return reply.header("Set-Cookie", issue(req, reply, "context")).send();
+  });
 
   app.post(sessionUrl, options, async (req,reply) => {
     if (!originAllowed(req)) return reply.code(403).send({error:"same-origin only"});

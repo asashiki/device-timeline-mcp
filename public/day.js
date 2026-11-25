@@ -26,13 +26,39 @@ const label = row => isIdle(row.appId) ? '设备空闲' : (row.appName || row.ap
 const deviceName = id => dataset?.devices.find(d=>d.deviceId===id)?.deviceName || id;
 const fmtHour = h => pad(h)+':00';
 const sliceLabel = () => hour===null?'全天记录':fmtHour(hour)+' — '+fmtHour(hour+1);
-const authDialog = () => {
-  $('auth-note').textContent=personal?.locationAccess?'此浏览器可以查看身体和位置记录。':personal?'此浏览器可以查看身体记录。位置需要综合只读权限。':'使用 Hibi 只读权限查看身体和位置记录。';
-  $('notion-pair').hidden=document.body.dataset.notion!=='configured'||!!personal?.locationAccess;
-  $('key-form').hidden=!!personal?.locationAccess;
-  $('signout').hidden=!personal;
+const entryPage = document.body.dataset.entryPage;
+function rememberDay() {
+  try { localStorage.removeItem('hibi-return-live');localStorage.setItem('hibi-return-day', JSON.stringify({date,hour,savedAt:Date.now()})); } catch {}
+}
+function restoreDay() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('hibi-return-day'));
+    localStorage.removeItem('hibi-return-day');
+    if (urlParams.has('date') || !saved || Date.now()-saved.savedAt > 15*60000) return;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(saved.date)) {
+      date=saved.date;
+      hour=Number.isInteger(saved.hour)&&saved.hour>=0&&saved.hour<24?saved.hour:null;
+      reflectUrl();
+    }
+  } catch {}
+}
+function openFallback() {
+  const paired = document.body.dataset.notion === 'configured';
+  $('notion-pair').hidden = !paired;
+  $('manual').open = !paired;
   $('auth').showModal();
-};
+}
+function entryLink() {
+  if (entryPage) {
+    const link=el('a','private-entry','从 Notion 打开 ↗');
+    link.href=entryPage;
+    link.onclick=rememberDay;
+    return link;
+  }
+  const link=el('button','private-entry','查看私人记录');
+  link.type='button';link.onclick=openFallback;
+  return link;
+}
 function reflectUrl(){
   const u=new URL(location.href);
   u.searchParams.set('date',date);
@@ -140,12 +166,25 @@ function renderList(){
 }
 function privatePanels(){
   if(privateFailed){
+    $('body-section').hidden=false;
+    $('map-title').textContent='位置记录';
+    document.querySelector('.jumps a[href="#body-section"]').hidden=false;
     for (const id of ['map','body']) { const retry=el('button','retry','重新读取');retry.onclick=load;$(id).replaceChildren(el('p','empty','暂时无法读取这一天的私人记录。'),retry); }
     return;
   }
-  const args={from:dataset.from,timeZone:zone,hour,onUnlock:authDialog};
-  renderBody($('body'),{...args,hours:personal?.hours||[],authorized:!!personal});
-  renderMap($('map'),{...args,locations:personal?.locations||[],locationAccess:!!personal?.locationAccess});
+  const args={from:dataset.from,timeZone:zone,hour};
+  const hasLocation=!!personal?.locationAccess;
+  $('body-section').hidden=!personal;
+  document.querySelector('.jumps a[href="#body-section"]').hidden=!personal;
+  $('map-title').textContent=personal?'位置记录':'位置与身体记录';
+  $('signout').hidden=!personal;
+  if (personal) renderBody($('body'),{...args,hours:personal.hours,authorized:true});
+  else $('body').replaceChildren();
+  if (hasLocation) renderMap($('map'),{...args,locations:personal.locations||[],locationAccess:true});
+  else {
+    renderMap($('map'),{...args,locations:[],locationAccess:false});
+    $('map').replaceChildren(entryLink());
+  }
 }
 function render(){
   title();if(!dataset)return;
@@ -155,7 +194,7 @@ function render(){
   $('zone').textContent=zone==='Asia/Shanghai'?'北京时间 · UTC+8':zone;
 }
 async function call(path,options={}){
-  const r=await fetch(path,{credentials:'same-origin',cache:'no-store',signal:AbortSignal.timeout(14000),...options});
+  const r=await fetch(path,{mode:'same-origin',redirect:'error',credentials:'same-origin',cache:'no-store',signal:AbortSignal.timeout(14000),...options});
   if(!r.ok)throw Object.assign(Error('HTTP '+r.status),{status:r.status});
   return r.status===204?null:r.json();
 }
@@ -187,7 +226,6 @@ for(let h=0;h<24;h++)mobileHour.add(new Option(fmtHour(h)+' – '+fmtHour(h+1),S
 mobileHour.onchange=()=>changeHour(mobileHour.value===''?null:Number(mobileHour.value));
 $('clear-hour').onclick=()=>changeHour(null);
 $('prev').onclick=()=>dayOffset(-1);$('next').onclick=()=>dayOffset(1);$('today').onclick=()=>pickDate(today());$('pick-date').onchange=e=>pickDate(e.target.value);
-$('access').onclick=authDialog;
 $('more').onclick=()=>{limit+=25;renderList();};
 $('export').onclick=()=>{
   const exported=records().map(({row,a,b})=>({...row,startedAt:new Date(a).toISOString(),endedAt:b===null?null:new Date(b).toISOString(),durationSeconds:b===null?null:(b-a)/1000}));
@@ -200,14 +238,14 @@ $('key-form').onsubmit=async e=>{
   catch{$('auth-state').textContent='授权未成功，请检查只读凭据。';}
 };
 $('notion-pair').onclick=async()=>{
-  try{const context={date,hour};sessionStorage.setItem('hibi-return-day',JSON.stringify(context));
+  try{rememberDay();
     const {notionUrl}=await call('/api/console/notion/start',{method:'POST'});
     const target=new URL(notionUrl);if(target.origin!=='https://app.notion.com'||target.username||target.password)throw Error();location.assign(target.href);
   }catch{$('auth-state').textContent='暂时无法打开 Notion，请重试。';}
 };
 $('signout').onclick=async()=>{
-  try{await call('/api/console/session',{method:'DELETE'});$('auth').close();await load();}
-  catch{$('auth-state').textContent='取消授权失败，请重试。';}
+  try{await call('/api/console/session',{method:'DELETE'});await load();}
+  catch{$('entry-error').hidden=false;$('entry-error').textContent='未能退出，请重试。';}
 };
 async function start(){
   const proof=window.hibiConfirmation;delete window.hibiConfirmation;
@@ -215,10 +253,24 @@ async function start(){
     let confirmed=false;
     try{await call('/api/console/notion/confirm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({proof})});confirmed=true;}
     catch{$('auth-state').textContent='这次授权未成功，请重新通过 Notion 授权。';}
-    try{const back=JSON.parse(sessionStorage.getItem('hibi-return-day'));sessionStorage.removeItem('hibi-return-day');
-      if(back&&/^\d{4}-\d\d-\d\d$/.test(back.date)){date=back.date;hour=Number.isInteger(back.hour)&&back.hour>=0&&back.hour<24?back.hour:null;reflectUrl();}}
-    catch{}
-    if(!confirmed)authDialog();
+    if(confirmed) restoreDay();
+    else { $('entry-error').hidden=false;$('entry-error').textContent='链接已失效，请重新打开私人时间线。'; }
+  }
+  if(window.hibiViewReady){
+    const accepted=await window.hibiViewReady;
+    delete window.hibiViewReady;
+    if(accepted){
+      try {
+        const returnLive=Number(localStorage.getItem('hibi-return-live'));
+        localStorage.removeItem('hibi-return-live');
+        if(returnLive && Date.now()-returnLive<15*60000 && !urlParams.has('date')){
+          location.replace('/live#health-section');
+          return;
+        }
+      } catch {}
+      restoreDay();
+    }
+    else { $('entry-error').hidden=false;$('entry-error').textContent='链接未能打开，请从 Notion 重新进入。'; }
   }
   await load();
 }
