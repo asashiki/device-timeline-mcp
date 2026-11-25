@@ -150,6 +150,8 @@ def day_facts(db, day, as_of):
         sleep_source = ('private_completed_sleep' if has_imports else
                         "(SELECT *, 'hibi_band_direct' AS source, NULL AS superseded_at, NULL AS import_minutes, "
                         "NULL AS import_received_at FROM band_sleep)")
+        if db.execute("SELECT 1 FROM sqlite_master WHERE type='view' AND name='private_sleep_history'").fetchone():
+            sleep_source='private_sleep_history'
         # Query as of the snapshot time, not the end of the requested calendar
         # day. A later backfill of yesterday's sleep belongs to yesterday.
         as_of_iso = utc_string(as_of)

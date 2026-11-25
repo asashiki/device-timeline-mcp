@@ -168,6 +168,15 @@ const MIGRATIONS: Array<(db: DatabaseSync) => void> = [
     device_id TEXT NOT NULL, slot INTEGER NOT NULL, checked_at TEXT NOT NULL,
     record_json TEXT, change TEXT NOT NULL, last_changed_at TEXT, latest_sample_at TEXT,
     PRIMARY KEY(device_id,slot)) WITHOUT ROWID;`),
+  (db) => db.exec(`CREATE TABLE private_sleep_estimates(
+    device_id TEXT NOT NULL,started_at TEXT NOT NULL,ended_at TEXT NOT NULL,received_at TEXT NOT NULL,
+    PRIMARY KEY(device_id,started_at),CHECK(ended_at>started_at)) WITHOUT ROWID;
+    CREATE VIEW private_sleep_history AS SELECT * FROM private_completed_sleep
+    UNION ALL SELECT e.device_id,e.started_at,e.ended_at,NULL AS asleep_minutes,e.received_at,
+      'band_minute_estimate' AS source,
+      (SELECT MIN(r.received_at) FROM private_completed_sleep r WHERE r.device_id=e.device_id
+       AND r.started_at<e.ended_at AND r.ended_at>e.started_at) AS superseded_at,
+      NULL AS import_minutes,NULL AS import_received_at FROM private_sleep_estimates e;`),
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;

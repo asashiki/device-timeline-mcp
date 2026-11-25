@@ -64,6 +64,8 @@ def mcp_row(facts, checked, old_mac_idle=False):
         health_status = '当日无记录'
     elif not sessions:
         health_status = '待补睡眠'
+    elif any(s.get('source') == 'band_minute_estimate' for s in sessions):
+        health_status = '含睡眠估算'
     elif any(s.get('source') == 'mi_fitness_local_log' or
              s.get('asleepMinutesSource') == 'mi_fitness_local_log' for s in sessions):
         health_status = '含睡眠补录'
@@ -78,6 +80,10 @@ def mcp_row(facts, checked, old_mac_idle=False):
             end = parse_stamp(session['end']).astimezone(LOCAL)
             prefix = '前一晚 ' if start.date() < end.date() else ''
             text = f'睡眠 {prefix}{start:%H:%M}–{end:%H:%M}'
+            if session.get('source')=='band_minute_estimate':
+                minutes=round((end-start).total_seconds()/60)
+                metrics.append(f'{text}（约 {minutes//60} 小时 {minutes%60} 分，按心率和步数估算）')
+                continue
             if session['asleepMinutes'] is not None:
                 hours, minutes = divmod(session['asleepMinutes'], 60)
                 text += f'（实睡 {hours} 小时 {minutes} 分）'

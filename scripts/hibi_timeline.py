@@ -138,6 +138,8 @@ def _sleep(db, day, start, end, as_of, tables, events):
     else:
         query = """SELECT started_at,ended_at,asleep_minutes,'hibi_band_direct',NULL FROM band_sleep
             WHERE device_id=:device AND started_at<:hi AND ended_at>=:lo AND ended_at<=:at AND received_at<=:at"""
+    if 'private_sleep_history' in tables:
+        query=query.replace('FROM private_completed_sleep','FROM private_sleep_history')
     sessions = []
     for begin, finish, minutes, source, supplement in db.execute(query,dict(lo=utc_string(start),hi=utc_string(end),at=utc_string(as_of),device=HEALTH_DEVICE)):
         a,b = parse_stamp(begin),parse_stamp(finish)
@@ -150,6 +152,10 @@ def _sleep(db, day, start, end, as_of, tables, events):
             actual = f'整段实睡 {supplement} 分钟（时长由小米运动健康本机补录）'
         else:
             actual = '实睡分钟未知'
+        if source=='band_minute_estimate':
+            minutes=round((b-a).total_seconds()/60)
+            actual=f'约 {minutes//60} 小时 {minutes%60} 分'
+            source_label='按心率和步数估算'
         detail = f'{_stamp(a,day)}–{_stamp(b,day)}  睡眠 · {actual} · {source_label}'
         if b == start:
             events[0].append((start,detail + '（在当天开始时结束）'))
