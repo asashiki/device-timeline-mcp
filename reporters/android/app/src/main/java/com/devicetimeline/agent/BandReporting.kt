@@ -125,7 +125,7 @@ internal class BandReporting(private val ctx: Context) {
                     row.previousMinutes?.let { detail.put("previousMinutes", it) }
                     record.put("valueJson", detail)
                 }
-                "sleep_session" -> row.endAt?.let { end ->
+                "sleep_session", "sleep_band_interval" -> row.endAt?.let { end ->
                     val detail = JSONObject().put("endAt", end)
                     row.asleepMinutes?.let { detail.put("asleepMinutes", it) }
                     record.put("valueJson", detail)

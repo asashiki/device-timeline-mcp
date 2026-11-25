@@ -13,8 +13,8 @@ android {
         applicationId = "com.devicetimeline.agent"
         minSdk = 28
         targetSdk = 36
-        versionCode = (project.findProperty("versionCode") as String?)?.toIntOrNull() ?: 37
-        versionName = (project.findProperty("versionName") as String?) ?: "1.0.37"
+        versionCode = (project.findProperty("versionCode") as String?)?.toIntOrNull() ?: 38
+        versionName = (project.findProperty("versionName") as String?) ?: "1.0.38"
     }
 
     // Optional release signing: pass -PkeystorePath=… (plus password/alias) in CI.

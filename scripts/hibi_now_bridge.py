@@ -110,6 +110,10 @@ def render(body):
         source = ('小米运动健康本机补录' if night.get('source') == 'mi_fitness_local_log' else
                   '实睡时长由小米运动健康补录' if night.get('asleepMinutesSource') == 'mi_fitness_local_log'
                   else '手环直连' if night.get('source') == 'hibi_band_direct' else '来源未标明')
+        if night.get('source')=='hibi_band_interval':
+            minutes=round((end-begin).total_seconds()/60)
+            detail=f'记录跨度 {minutes//60} 小时 {minutes%60} 分'
+            source='手环原始时段，未标记结束'
         if night.get('source')=='band_minute_estimate':
             minutes=round((end-begin).total_seconds()/60)
             detail=f'约 {minutes//60} 小时 {minutes%60} 分'

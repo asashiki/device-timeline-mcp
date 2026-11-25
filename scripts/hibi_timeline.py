@@ -152,6 +152,8 @@ def _sleep(db, day, start, end, as_of, tables, events):
             actual = f'整段实睡 {supplement} 分钟（时长由小米运动健康本机补录）'
         else:
             actual = '实睡分钟未知'
+        if source=='hibi_band_interval':
+            source_label='手环原始时段，未标记结束'
         if source=='band_minute_estimate':
             minutes=round((b-a).total_seconds()/60)
             actual=f'约 {minutes//60} 小时 {minutes%60} 分'

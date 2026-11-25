@@ -49,6 +49,8 @@ const bandBatch = z.object({ records: z.array(z.discriminatedUnion("type", [
     valueJson: z.discriminatedUnion("origin",[nativeProgress, observedGrowth]) }).strict(),
   z.object({ ...bandSampleBase, type: z.literal("sleep_interval_progress"), unit:z.literal("state"), value:z.literal(1),
     valueJson:nativeProgress }).strict(),
+  z.object({ ...bandSampleBase, type: z.literal("sleep_band_interval"), unit:z.literal("minutes"),
+    value:z.number().int().min(1).max(1440), valueJson:z.object({endAt:sessionTimestamp}).strict() }).strict(),
   z.object({ ...bandSampleBase, type: z.literal("sleep_session"), unit: z.literal("minutes"),
     value: z.number().int().min(1).max(1440), valueJson:z.object({
       endAt: z.string().max(40).datetime({offset:true}), asleepMinutes:z.number().int().min(1).max(1440).optional()
@@ -65,6 +67,11 @@ const bandBatch = z.object({ records: z.array(z.discriminatedUnion("type", [
     const increase = r.value - proof.previousMinutes;
     return Date.parse(proof.previousObservedAt) >= Date.parse(proof.sessionStart)
       && gap >= 45 && gap <= 600 && increase > 0 && increase <= Math.ceil(gap / 60) + 1;
+  }
+  if (r.type === "sleep_band_interval") {
+    const end = Date.parse(r.valueJson.endAt);
+    const seconds = (end-Date.parse(r.recordedAt))/1000;
+    return end<=Date.now() && seconds>=60 && seconds<=86400 && Math.floor(seconds/60)===r.value;
   }
   if (r.type !== "sleep_session") return true;
   const elapsed = (Date.parse(r.valueJson.endAt) - Date.parse(r.recordedAt)) / 60000;

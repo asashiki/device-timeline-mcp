@@ -16,7 +16,7 @@ const decode = (row: Check): RecordSeen | null => row.record_json ? JSON.parse(r
 function latestRecord(db: DatabaseSync, deviceId: string, asOf: string): RecordSeen | null {
   const closed = db.prepare(`SELECT started_at AS start, ended_at AS end, NULL AS progressAt,
     COALESCE(asleep_minutes, CASE WHEN import_received_at<=? THEN import_minutes END) AS minutes,
-    source, received_at AS receivedAt FROM private_completed_sleep WHERE device_id=?
+    source, received_at AS receivedAt FROM private_native_sleep_history WHERE device_id=?
     AND ended_at<=? AND received_at<=? AND (superseded_at IS NULL OR superseded_at>?)
     ORDER BY ended_at DESC, started_at DESC LIMIT 1`).get(asOf, deviceId, asOf, asOf, asOf) as RecordSeen | undefined;
   const open = db.prepare(`SELECT session_start AS start,NULL AS end,observed_at AS progressAt,

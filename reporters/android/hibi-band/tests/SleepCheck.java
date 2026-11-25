@@ -26,6 +26,10 @@ class SleepCheck {
         check(BandSleep.Companion.decode(frame(33,4,0xc0,false,START,END,0),END+600L)==null);
         check(BandSleep.Companion.decode(frame(33,4,0xc0,true,START,END,0),END-1L)==null);
         check(BandSleep.Companion.decode(frame(13,4,0xc0,true,START,END,0),END+1L)==null);
+        var partial=BandSleep.Companion.provisional(frame(33,4,0xc0,false,START,END,0),END+600L);
+        check(partial!=null && partial.getStart()==START && partial.getEnd()==END && partial.getAsleepMinutes()==null);
+        check(BandSleep.Companion.provisional(frame(33,4,0x80,false,START,END,0),END+600L)==null);
+        check(BandSleep.Companion.provisional(frame(33,4,0xc0,false,START,END,0),END-1L)==null);
         var newer=BandSleep.Companion.decode(frame(33,5,0xc800,true,START,END,427),END+600L);
         check(newer!=null && Integer.valueOf(427).equals(newer.getAsleepMinutes()));
         var invalid=BandSleep.Companion.decode(frame(33,5,0xc000,true,START,END,427),END+600L);
