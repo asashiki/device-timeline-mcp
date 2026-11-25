@@ -67,7 +67,7 @@ internal class BandReporting(private val ctx: Context) {
         val settings = SettingsStore(ctx).load()
         while (enabled) {
             val batch = BandSync.pending(ctx, limit = 200)
-            if (batch.isEmpty()) return
+            if (batch.isEmpty()) break
             val outcome = send(settings, batch)
             if (outcome != null) {
                 uploadStatus(outcome)
@@ -78,6 +78,9 @@ internal class BandReporting(private val ctx: Context) {
                 .putString("upload_note", "已收到服务器回执").apply()
             refresh()
         }
+        // A collector still running the previous release must continue to receive core health data.
+        val extended = BandSync.pendingExtended(ctx, 170)
+        if (enabled && extended.isNotEmpty() && send(settings, extended) == null) BandSync.ack(ctx, extended)
     }
     private fun uploadStatus(text: String) {
         prefs.edit().putString("upload_note", text).apply()

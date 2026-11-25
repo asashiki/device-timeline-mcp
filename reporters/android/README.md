@@ -30,8 +30,7 @@ Open `app/build/outputs/apk/debug/app-debug.apk` on the phone and confirm instal
 5. Toggle **开机自启 / Start on boot** if you want it to survive reboots, then
    tap **启动 / Start**.
 
-The notification shows the current reported app. The screen also shows the last
-30 log lines.
+In 设置, choose which of phone activity, band records and location to collect. The optional phone location uses the system network and passive providers, with a 15-minute minimum interval and roughly 100 metres of movement. Records use the time and accuracy of the original fix. The phone queues missed uploads while offline.
 
 ## Phone vs. tablet (two Android devices)
 

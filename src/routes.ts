@@ -1,3 +1,4 @@
+import { LIVE_HEALTH_DEVICE_ID } from "./db/live-health.js";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { resolvePrivateReadScope } from "./console-body.js";
@@ -42,6 +43,8 @@ const observedGrowth = z.object({
 }).strict();
 const bandBatch = z.object({ records: z.array(z.discriminatedUnion("type", [
   z.object({ ...bandSampleBase, type: z.literal("heart_rate"), unit: z.literal("bpm"), value: z.number().int().min(1).max(254) }).strict(),
+  z.object({ ...bandSampleBase, type: z.literal("oxygen_saturation"), unit: z.literal("%"), value: z.number().int().min(1).max(100) }).strict(),
+  z.object({ ...bandSampleBase, type: z.literal("distance"), unit: z.literal("m"), value: z.number().int().min(0).max(65534) }).strict(),
   z.object({ ...bandSampleBase, type: z.literal("steps"), unit: z.literal("count"), value: z.number().int().min(0).max(16383) }).strict(),
   z.object({ ...bandSampleBase, type: z.literal("sleep_state"), unit: z.literal("state"), value: z.union([z.literal(0), z.literal(1)]),
     valueJson: z.object({origin:z.enum(["band_basic_status","band_status_event"]), timeBasis:z.literal("phone_observed")}).strict() }).strict(),
@@ -157,7 +160,27 @@ export function registerRoutes(app: FastifyInstance, ctx: RouteContext): void {
         signalsDiffer: differing, batteryPercent:device.batteryPercent,charging:device.charging,
         powerSource:device.powerSource,batteryReportedAt:device.batteryReportedAt };
     });
-    return { ...body, mac: macSnapshot, devices };
+    return { ...body, mac: { ...macSnapshot, lastPlaybackEvent: repo.recentPlayback(MAC_CONTEXT_DEVICE_ID,1)[0] ?? null },
+      phoneLocation: repo.phoneLocations(LIVE_HEALTH_DEVICE_ID)[0] ?? null, devices };
+  });
+
+  const locationPoint = z.object({
+    latitude: z.number().min(-90).max(90), longitude: z.number().min(-180).max(180),
+    accuracyMeters: z.number().nonnegative().finite(), sampledAt: z.string().max(40).datetime({ offset:true })
+  }).strict();
+  app.post("/api/devices/location", { logLevel: "silent", bodyLimit: 1024 }, async (request, reply) => {
+    privateHeaders(reply);
+    const device = auth.resolve(request.headers.authorization);
+    if (!device) return reply.code(401).send({error:"invalid device token"});
+    if (device.platform !== "android" || device.deviceId !== LIVE_HEALTH_DEVICE_ID)
+      return reply.code(403).send({error:"wrong device"});
+    const point = locationPoint.safeParse(request.body);
+    if (!point.success) return reply.code(400).send({error:"invalid location"});
+    const at = Date.parse(point.data.sampledAt);
+    if (!Number.isFinite(at) || at > Date.now()+5000 || at < Date.now()-30*86400000)
+      return reply.code(400).send({error:"invalid sample time"});
+    repo.recordLocation(device.deviceId, {...point.data,sampledAt:new Date(at).toISOString()});
+    return reply.code(202).send({ok:true});
   });
 
   app.post("/api/devices/mac-context", {
@@ -183,7 +206,8 @@ export function registerRoutes(app: FastifyInstance, ctx: RouteContext): void {
   const rangeStamp = z.string().max(40).datetime({offset:true});
   const rangeQuery = z.object({from:rangeStamp, to:rangeStamp}).strict();
   app.get("/api/agent/body-range", async (request, reply) => {
-    if (!authorizeBodyRead(request, reply)) return;
+    const scope = authorizeBodyRead(request, reply);
+    if (!scope) return;
     const input = rangeQuery.safeParse(request.query);
     if (!input.success) return reply.code(400).send({error:"from and to must be ISO 8601 timestamps with timezone"});
     const start = Date.parse(input.data.from);
@@ -193,7 +217,9 @@ export function registerRoutes(app: FastifyInstance, ctx: RouteContext): void {
         end <= start || end > now.getTime() || end - start > 7 * 86400000) {
       return reply.code(400).send({error:"use whole minutes, from < to <= now, up to 7 days"});
     }
-    return repo.bodyRange(new Date(start).toISOString(), new Date(end).toISOString(), now);
+    const from = new Date(start).toISOString(), to = new Date(end).toISOString();
+    const result = repo.bodyRange(from, to, now);
+    return scope === "context" ? {...result, phoneLocations:repo.phoneLocations(LIVE_HEALTH_DEVICE_ID,from,to)} : result;
   });
 
   app.get("/health", async () => ({

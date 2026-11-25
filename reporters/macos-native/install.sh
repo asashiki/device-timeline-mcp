@@ -24,9 +24,9 @@ fi
 trap 'rm -rf "$stage"' EXIT
 new_app="$stage/Hibi Mac.app"
 mkdir -p "$new_app/Contents/MacOS"
-nice -n 10 swiftc -parse-as-library "$root/"*.swift -o "$new_app/Contents/MacOS/HibiMac" -framework AppKit -framework SwiftUI -framework ApplicationServices -framework IOKit -framework IOKit
+nice -n 10 swiftc -parse-as-library "$root/"*.swift -o "$new_app/Contents/MacOS/HibiMac" -framework AppKit -framework ApplicationServices -framework IOKit -framework CoreAudio
 cat > "$new_app/Contents/Info.plist" <<'PLIST'
-<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>CFBundleExecutable</key><string>HibiMac</string><key>CFBundleIdentifier</key><string>com.asashiki.hibi.mac</string><key>CFBundleName</key><string>Hibi Mac</string><key>CFBundleVersion</key><string>2</string><key>NSAccessibilityUsageDescription</key><string>读取当前前台窗口标题，供你通过 Hibi 私有接口查询。</string><key>LSUIElement</key><true/><key>NSHighResolutionCapable</key><true/></dict></plist>
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>CFBundleExecutable</key><string>HibiMac</string><key>CFBundleIdentifier</key><string>com.asashiki.hibi.mac</string><key>CFBundleName</key><string>Hibi Mac</string><key>CFBundleVersion</key><string>3</string><key>NSAccessibilityUsageDescription</key><string>读取当前前台窗口标题，供你通过 Hibi 私有接口查询。</string><key>LSUIElement</key><true/><key>NSHighResolutionCapable</key><true/></dict></plist>
 PLIST
 codesign --force --sign - "$new_app"
 codesign --verify "$new_app"

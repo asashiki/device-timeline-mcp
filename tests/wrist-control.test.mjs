@@ -53,3 +53,51 @@ test('scheduled commands survive restart, can be cancelled and are delivered at 
   db.prepare('UPDATE private_wrist_commands SET expires=? WHERE id=?').run(Date.now()-1,expiry.requestId);
   assert.equal((await api('GET',wrist+'/'+expiry.requestId,secret)).json().status,'expired');
 });
+
+test('wake-at stages the alarm before its target, ignores legacy phones and never arms late', async t => {
+  const db = new DatabaseSync(':memory:');
+  runMigrations(db);
+  const app = Fastify();
+  t.after(async () => { await app.close(); db.close(); });
+  const secret = 'w'.repeat(40), phone = 'p'.repeat(40);
+  const device = {deviceId: 'android-phone', deviceName: 'Phone', platform: 'android', token: phone};
+  registerWrist(app, db, new DeviceAuth([device]), createHash('sha256').update(secret).digest());
+  const wrist = '/api/agent/wrist', next = '/api/devices/wrist/next';
+  const api = (payload, url=wrist, token=secret, headers={}) => app.inject({
+    method:'POST', url, headers:{authorization:'Bearer '+token,...headers}, payload
+  });
+  const time = new Date(Math.floor(Date.now()/60000)*60000+2*86400000).toISOString();
+  const cmd = {action:'wake-at',requestId:randomUUID(),args:{at:time}};
+  const future = (await api(cmd)).json();
+  assert.equal(future.wakeAt,time);
+  assert.equal(Date.parse(future.deliverAt),Date.parse(time)-23*3600000);
+  assert.equal(Date.parse(future.expiresAt),Date.parse(time)-15000);
+  assert.equal((await api(cmd)).json().id,future.id);
+  assert.equal((await api({...cmd,deliverAt:time})).statusCode,400);
+  assert.equal((await api({...cmd,args:{at:time.replace('00.000Z','15.000Z')},requestId:randomUUID()})).statusCode,400);
+  const near = {action:'wake-at',requestId:randomUUID(),args:{at:new Date(Date.parse(time)-1.5*86400000).toISOString()}};
+  assert.ok(Date.parse((await api(near)).json().deliverAt) <= Date.now());
+  const battery = {action:'battery',requestId:randomUUID()};
+  await api(battery);
+  const link = {version:1,connected:true,note:'connected',since:Date.now()-10000};
+  assert.equal((await api(link,next,phone)).json().command.id,battery.requestId);
+  assert.equal((await api(link,next,phone,{'x-hibi-wrist-version':'2'})).json().command.id,near.requestId);
+  const receipt = {id:near.requestId, status:'confirmed', detail:'on the band', wakeMode:'reminder'};
+  await api(receipt,'/api/devices/wrist/receipt',phone);
+  await api(receipt,'/api/devices/wrist/receipt',phone);
+  const get = async id => (await app.inject({url:wrist+'/'+id,headers:{authorization:'Bearer '+secret}})).json();
+  const confirmed = await get(near.requestId);
+  assert.equal(confirmed.status,'confirmed');
+  const backup = await get(confirmed.followUpId);
+  assert.equal(backup.action,'wake-ring');
+  assert.equal(backup.deliverAt,near.args.at);
+  assert.equal(db.prepare("SELECT count(*) AS n FROM private_wrist_commands WHERE action='wake-ring'").get().n,1);
+  assert.equal((await app.inject({url:wrist+'/'+backup.id,method:'DELETE',headers:{authorization:'Bearer '+secret}})).json().status,'cancelled');
+  const removeZero = {action:'reminder-delete',requestId:randomUUID(),args:{id:0}};
+  assert.equal((await api(removeZero)).statusCode,202);
+  const lateId = randomUUID();
+  db.prepare("INSERT INTO private_wrist_commands(id,action,args,due,expires) VALUES(?,?,?,?,?)")
+    .run(lateId,'wake-at',JSON.stringify(near.args),Date.now()-60000,Date.now()-1);
+  const expired = await app.inject({url:wrist+'/'+lateId,headers:{authorization:'Bearer '+secret}});
+  assert.equal(expired.json().status,'expired');
+});

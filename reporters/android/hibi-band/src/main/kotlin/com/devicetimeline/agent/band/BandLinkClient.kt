@@ -58,7 +58,7 @@ object BandLinkClient {
         pending[id]=out
         return try{
             target.send(Message.obtain(null,3).apply {replyTo=replies;data=Bundle().apply {putString("id",id);putString("action",action);putString("args",args.toString())}})
-            withTimeoutOrNull(14000){out.await()}?:( "unconfirmed" to "没有手环回执")
+            withTimeoutOrNull(if (action == "wake-ring") 38000L else 14000L){out.await()}?:( "unconfirmed" to "没有手环回执")
         } catch(e:RemoteException){"offline" to "蓝牙服务已断开"} finally {pending.remove(id)}
     }
 }

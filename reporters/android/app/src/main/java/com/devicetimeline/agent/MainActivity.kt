@@ -12,8 +12,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -21,9 +21,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -43,6 +41,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -55,29 +54,10 @@ import androidx.compose.ui.unit.sp
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
-import androidx.health.connect.client.HealthConnectClient
-import androidx.health.connect.client.PermissionController
-import androidx.health.connect.client.permission.HealthPermission
-import androidx.health.connect.client.records.BloodGlucoseRecord
-import androidx.health.connect.client.records.BloodPressureRecord
-import androidx.health.connect.client.records.BodyTemperatureRecord
-import androidx.health.connect.client.records.DistanceRecord
-import androidx.health.connect.client.records.ExerciseSessionRecord
-import androidx.health.connect.client.records.HeartRateRecord
-import androidx.health.connect.client.records.HeightRecord
-import androidx.health.connect.client.records.OxygenSaturationRecord
-import androidx.health.connect.client.records.RespiratoryRateRecord
-import androidx.health.connect.client.records.SleepSessionRecord
-import androidx.health.connect.client.records.StepsRecord
-import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
-import androidx.health.connect.client.records.WeightRecord
 import androidx.lifecycle.lifecycleScope
 import com.devicetimeline.agent.band.BandSample
 import com.devicetimeline.agent.band.BandSync
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -95,7 +75,6 @@ private val HibiColors = lightColorScheme(
     error = Ink.red, outline = Color(0xFF77867E),
 )
 
-private enum class HcStatus { AVAILABLE, NEEDS_UPDATE, UNAVAILABLE }
 
 private data class PermSnapshot(
     val usage: Boolean = false,
@@ -105,36 +84,7 @@ private data class PermSnapshot(
 
 class MainActivity : ComponentActivity() {
 
-    private val hcPermissions = setOf(
-        HealthPermission.getReadPermission(HeartRateRecord::class),
-        HealthPermission.getReadPermission(StepsRecord::class),
-        HealthPermission.getReadPermission(SleepSessionRecord::class),
-        HealthPermission.getReadPermission(TotalCaloriesBurnedRecord::class),
-        HealthPermission.getReadPermission(OxygenSaturationRecord::class),
-        HealthPermission.getReadPermission(DistanceRecord::class),
-        HealthPermission.getReadPermission(ExerciseSessionRecord::class),
-        HealthPermission.getReadPermission(BloodPressureRecord::class),
-        HealthPermission.getReadPermission(BodyTemperatureRecord::class),
-        HealthPermission.getReadPermission(RespiratoryRateRecord::class),
-        HealthPermission.getReadPermission(BloodGlucoseRecord::class),
-        HealthPermission.getReadPermission(WeightRecord::class),
-        HealthPermission.getReadPermission(HeightRecord::class),
-    )
-
     private val perms = mutableStateOf(PermSnapshot())
-    private val hcGranted = mutableStateOf(false)
-    private val hcStatus = mutableStateOf(HcStatus.UNAVAILABLE)
-
-    private val hcPermissionLauncher = registerForActivityResult(
-        PermissionController.createRequestPermissionResultContract()
-    ) { granted ->
-        hcGranted.value = granted.containsAll(hcPermissions)
-        refreshHealth()
-        // Granting HC permission is the moment health data becomes readable —
-        // kick an immediate sync so data shows up without waiting for the cycle.
-        if (hcGranted.value) HealthSyncScheduler.runNow(this)
-    }
-
     private val notifLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { refreshPerms() }
@@ -167,12 +117,11 @@ class MainActivity : ComponentActivity() {
                 Surface(modifier = Modifier.fillMaxSize(), color = Ink.bg) {
                     AgentScreen(
                         perms = perms.value,
-                        hcStatus = hcStatus.value,
-                        hcGranted = hcGranted.value,
+
                         onOpenUsage = { UsageTracker.openUsageAccessSettings(this) },
                         onOpenBattery = { openBatterySettings() },
                         onOpenNotif = { requestNotifications() },
-                        onRequestHc = { requestHealthPermissions() },
+
                     )
                 }
             }
@@ -189,7 +138,7 @@ class MainActivity : ComponentActivity() {
                 .onFailure { SettingsStore(this).appendLog("未能恢复监听，等待系统重试") }
         }
         refreshPerms()
-        refreshHealth()
+
     }
 
     private fun refreshPerms() {
@@ -200,40 +149,6 @@ class MainActivity : ComponentActivity() {
                 ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
             else NotificationManagerCompat.from(this).areNotificationsEnabled(),
         )
-    }
-
-    private fun refreshHealth() {
-        val status = if (HealthConnectClient.getSdkStatus(this) == HealthConnectClient.SDK_AVAILABLE)
-            HcStatus.AVAILABLE else HcStatus.UNAVAILABLE
-        hcStatus.value = status
-        if (status != HcStatus.AVAILABLE) { hcGranted.value = false; return }
-        lifecycleScope.launch {
-            hcGranted.value = runCatching {
-                HealthConnectClient.getOrCreate(this@MainActivity)
-                    .permissionController.getGrantedPermissions().containsAll(hcPermissions)
-            }.getOrDefault(false)
-        }
-    }
-
-    private fun requestHealthPermissions() {
-        when (hcStatus.value) {
-            HcStatus.AVAILABLE -> hcPermissionLauncher.launch(hcPermissions)
-            // No Health Connect on this device (Android <14 ships it as a Play app) →
-            // send the user to install/update it instead of silently doing nothing.
-            HcStatus.NEEDS_UPDATE, HcStatus.UNAVAILABLE -> openHealthConnectInstall()
-        }
-    }
-
-    private fun openHealthConnectInstall() {
-        val pkg = "com.google.android.apps.healthdata"
-        runCatching {
-            startActivity(Intent(Intent.ACTION_VIEW, "market://details?id=$pkg".toUri())
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        }.onFailure {
-            startActivity(Intent(Intent.ACTION_VIEW,
-                "https://play.google.com/store/apps/details?id=$pkg".toUri())
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        }
     }
 
     private fun openBatterySettings() {
@@ -259,34 +174,29 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun AgentScreen(
     perms: PermSnapshot,
-    hcStatus: HcStatus,
-    hcGranted: Boolean,
     onOpenUsage: () -> Unit,
     onOpenBattery: () -> Unit,
     onOpenNotif: () -> Unit,
-    onRequestHc: () -> Unit,
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val store = remember { SettingsStore(context) }
     val initial = remember { store.load() }
 
     var serverUrl by remember { mutableStateOf(initial.serverUrl) }
     var token by remember { mutableStateOf(initial.token) }
-    var heartbeat by remember { mutableStateOf(initial.heartbeatSeconds.toString()) }
     var reportBattery by remember { mutableStateOf(initial.reportBattery) }
     var autoStart by remember { mutableStateOf(initial.autoStartOnBoot) }
     var running by remember { mutableStateOf(initial.isRunningEnabled) }
-    var hcSyncEnabled by remember { mutableStateOf(initial.hcSyncEnabled) }
+    var serverOpen by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(initial.serverUrl.isBlank() || initial.token.isBlank()) }
     var status by remember { mutableStateOf("") }
 
     fun persist() {
         store.save(
             AgentSettings(
                 serverUrl = serverUrl.trim(), token = token.trim(),
-                heartbeatSeconds = heartbeat.toIntOrNull() ?: 30,
+                heartbeatSeconds = initial.heartbeatSeconds,
                 reportBattery = reportBattery, autoStartOnBoot = autoStart,
-                isRunningEnabled = running, hcSyncEnabled = hcSyncEnabled,
+                isRunningEnabled = running, hcSyncEnabled = initial.hcSyncEnabled,
                 hcSyncIntervalMinutes = initial.hcSyncIntervalMinutes,
                 hcSyncRangeHours = initial.hcSyncRangeHours,
             )
@@ -314,43 +224,64 @@ private fun AgentScreen(
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween) {
             Text(if (page == "今日") "Hibi 日々" else page, fontSize = 32.sp, fontWeight = FontWeight.Bold)
-            if (page == "今日") Text(java.time.LocalDate.now().format(DateTimeFormatter.ofPattern("M月d日 E", java.util.Locale.CHINA)),
-                color = Ink.dim, fontSize = 16.sp)
+            androidx.compose.material3.TextButton(onClick = { page = if (page == "设置") "今日" else "设置" }) {
+                Text(if (page == "设置") "完成" else "设置", fontSize = 17.sp)
+            }
         }
         if (page != "设置") {
-        BandMonitorCard(page, onTools = { page = "手环" }, running=running, configured=configured, onStart = {
+        BandMonitorCard(running=running, configured=configured, onStart = {
             running = true
             persist()
             startService(TrackingService.ACTION_START)
-        }, onStopBand = {
-            if (running) startService(TrackingService.ACTION_START)
         })
 
         } else {
-        // ── Primary action: Start / Stop ──────────────────────────────────────
-        if (!running) {
-            Button(
-                onClick = {
 
-                    running = true; persist(); startService(TrackingService.ACTION_START)
-                    status = "已启动监听"
-                },
-                enabled = configured,
-                modifier = Modifier.fillMaxWidth().height(52.dp),
-            ) { Text(if (configured) "启动监听" else "请先填写下方服务器与 Token", fontSize = 16.sp) }
-        } else {
-            OutlinedButton(
-                onClick = {
-                    running = false; persist(); startService(TrackingService.ACTION_STOP)
-                    status = "已停止监听"
-                },
-                modifier = Modifier.fillMaxWidth().height(52.dp),
-            ) { Text("停止监听", fontSize = 16.sp) }
+        SectionCard("后台记录") {
+            ToggleRow("记录这台手机", running) { on ->
+                if (!on) {
+                    running = false
+                    persist()
+                    startService(TrackingService.ACTION_STOP)
+                } else if (configured) {
+                    running = true
+                    persist()
+                    startService(TrackingService.ACTION_START)
+                } else {
+                    serverOpen = true
+                    status = "请先连接服务器"
+                }
+            }
+            val band = remember { BandReporting(context.applicationContext) }
+            var bandEnabled by remember { mutableStateOf(band.enabled) }
+            val allowBand = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                if (granted) { band.enable(true); bandEnabled = true; if (running) startService(TrackingService.ACTION_START) }
+            }
+            var hasBand by remember { mutableStateOf(false) }
+            LaunchedEffect(Unit) { hasBand = withContext(Dispatchers.IO) { BandSync.hasPairing(context) } }
+            if (hasBand) {
+                ToggleRow("手环记录", bandEnabled) { on ->
+                    if (on && !BandReporting.hasBluetooth(context) && Build.VERSION.SDK_INT >= 31) allowBand.launch(Manifest.permission.BLUETOOTH_CONNECT)
+                    else { band.enable(on); bandEnabled = on; if (running) startService(TrackingService.ACTION_START) }
+                }
+            }
+            ToggleRow("开机后自动记录", autoStart) { autoStart = it; persist() }
+            ToggleRow("手机电量", reportBattery) { reportBattery = it; persist() }
+            LocationRow() { if (running) startService(TrackingService.ACTION_START) }
         }
-        if (status.isNotBlank()) Text(status, color = Ink.dim, fontSize = 15.sp)
-
-        // ── Connection ────────────────────────────────────────────────────────
-        SectionCard("连接") {
+        if (status.isNotBlank()) Text(status, color = Ink.dim, fontSize = 16.sp)
+        if (!perms.usage || !perms.battery || !perms.notifications) SectionCard("后台权限") {
+            if (!perms.usage) PermissionRow("使用记录", "记录前台应用", false, onOpenUsage)
+            if (!perms.battery) PermissionRow("后台运行", "允许息屏后继续记录", false, onOpenBattery)
+            if (!perms.notifications) PermissionRow("服务通知", "显示后台记录状态", false, onOpenNotif)
+        }
+        SectionCard("服务器") {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(if(configured) android.net.Uri.parse(serverUrl).host ?: "已配置" else "尚未连接", fontSize=17.sp)
+                androidx.compose.material3.TextButton(onClick={serverOpen=!serverOpen}) { Text(if(serverOpen) "收起" else "编辑") }
+            }
+            if (serverOpen) {
             OutlinedTextField(
                 value = serverUrl, onValueChange = { serverUrl = it },
                 label = { Text("服务器地址") }, placeholder = { Text("https://hibi.example.org") },
@@ -360,97 +291,20 @@ private fun AgentScreen(
                 value = token, onValueChange = { token = it },
                 label = { Text("设备 Token") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(),
             )
-            OutlinedTextField(
-                value = heartbeat, onValueChange = { heartbeat = it.filter(Char::isDigit) },
-                label = { Text("上报间隔秒（10–50）") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
-            )
-            ToggleRow("上报电池信息", reportBattery) { reportBattery = it; persist() }
-            ToggleRow("开机自启", autoStart) { autoStart = it; persist() }
-            Button(onClick = { persist(); status = "已保存" }, modifier = Modifier.fillMaxWidth()) {
-                Text("保存设置")
+                Button(onClick={persist();serverOpen=false;status="设置已保存"},enabled=configured) { Text("保存连接") }
             }
-        }
-
-        // ── Permissions (rows collapse to a check once granted) ───────────────
-        SectionCard("权限") {
-            PermissionRow(
-                title = "使用情况访问", desc = "读取前台应用（核心权限）",
-                granted = perms.usage, onGrant = onOpenUsage,
-            )
-            PermissionRow(
-                title = "忽略电池优化", desc = "防止系统在后台杀掉上报",
-                granted = perms.battery, onGrant = onOpenBattery,
-            )
-            PermissionRow(
-                title = "通知", desc = "常驻通知保活前台服务",
-                granted = perms.notifications, onGrant = onOpenNotif,
-            )
-        }
-
-        // ── Health Connect (optional extension) ───────────────────────────────
-        SectionCard("健康同步（扩展）") {
-            Text(
-                "可选：把手机 Health Connect 的健康数据（心率/步数/睡眠等）定期上传到收集器。一般用户用不到。",
-                color = Ink.dim, fontSize = 15.sp,
-            )
-            ToggleRow("启用健康同步", hcSyncEnabled) { enabled ->
-                hcSyncEnabled = enabled; persist()
-                if (enabled) {
-                    onRequestHc()
-                    HealthSyncScheduler.schedule(context, initial.hcSyncIntervalMinutes)
-                } else HealthSyncScheduler.cancel(context)
-            }
-            if (hcSyncEnabled) {
-                when (hcStatus) {
-                    HcStatus.UNAVAILABLE -> StatusLine("本机未安装 Health Connect", Ink.red)
-                    HcStatus.NEEDS_UPDATE -> StatusLine("Health Connect 需更新", Ink.warm)
-                    HcStatus.AVAILABLE ->
-                        if (hcGranted) StatusLine("健康数据权限：已授予", Ink.green)
-                        else StatusLine("健康数据权限：未授予", Ink.warm)
-                }
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    if (!(hcStatus == HcStatus.AVAILABLE && hcGranted)) {
-                        OutlinedButton(onClick = onRequestHc, modifier = Modifier.weight(1f)) {
-                            Text(when (hcStatus) {
-                                HcStatus.AVAILABLE -> "授予健康权限"
-                                HcStatus.NEEDS_UPDATE -> "更新 Health Connect"
-                                HcStatus.UNAVAILABLE -> "安装 Health Connect"
-                            })
-                        }
-                    }
-                    OutlinedButton(
-                        onClick = {
-                            status = "正在同步…"
-                            scope.launch { status = withContext(Dispatchers.IO) { HealthSyncRunner.diagnoseAndSync(context) } }
-                        },
-                        enabled = configured,
-                        modifier = Modifier.weight(1f),
-                    ) { Text("立即同步") }
-                }
-            }
-        }
-
-        // ── Logs ──────────────────────────────────────────────────────────────
-        SectionCard("最近日志") {
-            Text(
-                store.loadLogs(30).asReversed().joinToString("\n").ifBlank { "（暂无）" },
-                color = Ink.dim, fontSize = 15.sp,
-            )
         }
         }
         Spacer(Modifier.height(8.dp))
     }
     }
-    HibiNavigation(page) { page = it }
+
     }
 }
 
-private fun bandTime(ms: Long) = if (ms > 0) DateTimeFormatter.ofPattern("MM-dd HH:mm")
-    .withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(ms)) else "尚无"
-
 @Composable
 private fun BandMonitorCard(
-    page: String, onTools: () -> Unit, running: Boolean, configured: Boolean, onStart: () -> Unit, onStopBand: () -> Unit,
+    running: Boolean, configured: Boolean, onStart: () -> Unit,
 ) {
     val context = LocalContext.current
     val report = remember { BandReporting(context.applicationContext) }
@@ -459,7 +313,6 @@ private fun BandMonitorCard(
     var bound by remember { mutableStateOf(false) }
     var info by remember { mutableStateOf(report.status()) }
     var hint by remember { mutableStateOf("") }
-    var diagnosticsOpen by remember { mutableStateOf(false) }
     var latest by remember { mutableStateOf<Map<String, BandSample>>(emptyMap()) }
     var hourlySteps by remember { mutableStateOf<List<Int?>>(emptyList()) }
     LaunchedEffect(revision) {
@@ -495,20 +348,6 @@ private fun BandMonitorCard(
         if (granted) start() else hint = "打开手环监测需要附近设备权限。"
     }
     val link by com.devicetimeline.agent.band.BandLinkClient.state.collectAsState()
-    val commandScope = rememberCoroutineScope()
-    var commandFeedback by remember { mutableStateOf("") }
-    var sending by remember { mutableStateOf(false) }
-    val toolsOpen = page == "手环"
-    var reminderText by remember { mutableStateOf("") }
-    var alarmTime by remember { mutableStateOf("08:00") }
-    fun sendAction(name:String,args:org.json.JSONObject=org.json.JSONObject()) {
-        if(sending)return
-        sending=true
-        commandScope.launch {
-            try { commandFeedback=com.devicetimeline.agent.band.BandLinkClient.command(name,args).second }
-            finally {sending=false}
-        }
-    }
         val text = when {
             !bound -> "等待导入已配对的手环"
             !configured -> "请先保存服务器连接"
@@ -520,45 +359,8 @@ private fun BandMonitorCard(
         }
         val lastSleep = listOfNotNull(latest["sleep_session"], latest["sleep_band_interval"])
             .maxWithOrNull(compareBy<BandSample> { it.recordedAt }.thenBy { it.type == "sleep_session" })
-        BandHeader(link, text, if (toolsOpen) null else onTools)
-        if (!toolsOpen) WristOverview(latest["heart_rate"], latest["steps"], hourlySteps, lastSleep)
-        if (toolsOpen) {
-            Button(enabled=link.connected && !sending, onClick={sendAction("buzz")}, modifier=Modifier.fillMaxWidth().height(52.dp)) { Text("震一下", fontSize=17.sp) }
-        }
-        if (toolsOpen) SectionCard("手环工具") {
-            var toolGroup by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("提醒") }
-            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(4.dp)){
-                listOf("提醒","闹钟","设备").forEach { label ->
-                    androidx.compose.material3.FilterChip(selected=toolGroup==label,onClick={toolGroup=label},label={Text(label)})
-                }
-            }
-            if(toolGroup=="提醒") {
-            OutlinedTextField(value=reminderText,onValueChange={reminderText=it.take(240)},label={Text("发到手环的文字")},modifier=Modifier.fillMaxWidth())
-            OutlinedButton(enabled=link.connected && !sending && reminderText.isNotBlank(),onClick={sendAction("notify",org.json.JSONObject().put("text",reminderText))}){Text("发送到手环")}
-            OutlinedButton(enabled=link.connected && !sending,onClick={sendAction("reminders")}){Text("查看手环提醒")}
-            }
-            if(toolGroup=="闹钟") {
-            OutlinedButton(enabled=link.connected && !sending,onClick={sendAction("alarms")}){Text("查看闹钟")}
-            OutlinedTextField(value=alarmTime,onValueChange={alarmTime=it.take(5)},singleLine=true,label={Text("闹钟时间（24 小时制）")},modifier=Modifier.fillMaxWidth())
-            val alarm=runCatching{java.time.LocalTime.parse(alarmTime)}.getOrNull()
-            OutlinedButton(enabled=link.connected && !sending && alarm!=null,onClick={alarm?.let {sendAction("alarm-create",org.json.JSONObject().put("hour",it.hour).put("minute",it.minute))}}){Text("添加一次闹钟")}
-            }
-            if(toolGroup=="设备") {
-                listOf("device-info" to "型号与固件","screen-items" to "手环菜单","world-clocks" to "世界时钟",
-                    "sleep-schedule" to "睡眠计划","heart-settings" to "心率监测","oxygen-settings" to "血氧监测",
-                    "stress-settings" to "压力监测","vibration-patterns" to "震动样式",
-                    "watchfaces" to "已有表盘","weather-locations" to "天气地点").chunked(2).forEach { pair ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.spacedBy(8.dp)){
-                        pair.forEach { (action,label) -> OutlinedButton(modifier=Modifier.weight(1f),
-                            enabled=link.connected && !sending,onClick={sendAction(action)}) {Text(label)} }
-                    }
-                }
-            }
-        }
-        if(commandFeedback.isNotBlank())Text(commandFeedback,color=Ink.text,fontSize=16.sp)
-        if (toolsOpen && info.uploadedAt > 0) {
-            Text("上次成功上传  " + bandTime(info.uploadedAt), color = Ink.dim, fontSize = 15.sp)
-        }
+        BandHeader(link, text)
+        WristOverview(latest["heart_rate"], latest["steps"], hourlySteps, lastSleep, latest["oxygen_saturation"])
         if (hint.isNotEmpty()) Text(hint, color = Ink.warm, fontSize = 15.sp)
         if (!bound && Build.VERSION.SDK_INT >= 31) {
             OutlinedButton(onClick = { choosePairing.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }) {
@@ -572,53 +374,49 @@ private fun BandMonitorCard(
                     else btPermission.launch(Manifest.permission.BLUETOOTH_CONNECT)
                 }) { Text("开启手环监测") }
         }
-        if (toolsOpen) androidx.compose.material3.TextButton(onClick = { diagnosticsOpen = !diagnosticsOpen }) {
-            Text(if (diagnosticsOpen) "收起诊断" else "查看诊断")
-        }
-        if (toolsOpen && diagnosticsOpen) {
-            if (enabled && running) {
-                OutlinedButton(onClick = { report.enable(false); enabled = false; onStopBand() }) { Text("关闭手环监测") }
-            }
-            Text(link.diagnostic.ifBlank { link.note }, color = Ink.dim, fontSize = 15.sp)
-            Text("本机最近保存新读数  " + bandTime(info.readAt), color = Ink.dim, fontSize = 15.sp)
-            if (info.uploadNote.isNotEmpty()) Text(info.uploadNote, color = Ink.dim, fontSize = 15.sp)
-            BandSampleRow("上次睡眠状态观测", latest["sleep_state"])
-        }
 }
 
-private fun localBandTime(timestamp: String) =
-    runCatching { bandTime(Instant.parse(timestamp).toEpochMilli()) }.getOrDefault(timestamp)
-
 @Composable
-private fun BandSampleRow(label: String, sample: BandSample?) {
-    val value = when (sample?.type) {
-        "heart_rate" -> "${sample.value} 次/分"
-        "steps" -> "${sample.value} 步（该分钟）"
-        "sleep_state" -> if (sample.value == 1) "睡着" else "清醒"
-        "sleep_session", "sleep_band_interval" -> {
-            val minutes = sample.asleepMinutes ?: sample.value
-            val duration = if (minutes >= 60) "${minutes / 60} 小时 ${minutes % 60} 分" else "${minutes} 分钟"
-            if (sample.asleepMinutes != null) "实睡 $duration" else "记录跨度 $duration"
-        }
-        else -> "尚无记录"
-    }
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, color = Ink.text, fontSize = 14.sp)
-        Column(horizontalAlignment = Alignment.End) {
-            Text(value, color = Ink.dim, fontSize = 14.sp)
-            if (sample != null) {
-                val whenMeasured = localBandTime(sample.recordedAt) +
-                    (sample.endAt?.let { " 至 " + localBandTime(it) } ?: "")
-                val timeLabel = when (sample.type) {
-                    "sleep_state" -> "手机观测于 "
-                    "sleep_session", "sleep_band_interval" -> ""
-                    else -> "手环记录于 "
-                }
-                Text(timeLabel + whenMeasured,
-                    color = Ink.faint, fontSize = 15.sp)
+private fun LocationRow(refresh: () -> Unit) {
+    val ctx = LocalContext.current
+    var enabled by remember { mutableStateOf(PhoneLocation.enabled(ctx)) }
+    var permission by remember { mutableStateOf(PhoneLocation.hasPermission(ctx)) }
+    val currentRefresh by rememberUpdatedState(refresh)
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    androidx.compose.runtime.DisposableEffect(lifecycle) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                permission = PhoneLocation.hasPermission(ctx)
+                if (enabled && permission) currentRefresh()
             }
         }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
     }
+    fun openLocationSettings() {
+        ctx.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, "package:${ctx.packageName}".toUri()))
+    }
+    val allowBackground = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        permission = PhoneLocation.hasPermission(ctx)
+        if(permission) refresh()
+    }
+    val allowLocation = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        permission = PhoneLocation.hasPermission(ctx)
+        if (permission) refresh()
+        else if(granted && Build.VERSION.SDK_INT==29) allowBackground.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+        else if(granted && Build.VERSION.SDK_INT>=30) openLocationSettings()
+    }
+    ToggleRow("手机位置",enabled) { on ->
+        enabled = on
+        PhoneLocation.setEnabled(ctx,on)
+        if (on && !PhoneLocation.whenInUse(ctx)) allowLocation.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+        else if(on && !PhoneLocation.hasPermission(ctx)) openLocationSettings()
+        else refresh()
+    }
+    if(enabled && !permission) {
+        Text("后台记录需要「始终允许」位置权限。",fontSize=15.sp,color=Ink.dim)
+        androidx.compose.material3.TextButton(onClick={openLocationSettings()}) { Text("打开位置权限") }
+    } else if(enabled) Text("约每 15 分钟记录大致位置。",fontSize=15.sp,color=Ink.dim)
 }
 
 @Composable
@@ -660,18 +458,13 @@ private fun PermissionRow(title: String, desc: String, granted: Boolean, onGrant
 }
 
 @Composable
-private fun StatusLine(text: String, color: Color) {
-    Text(text, color = color, fontSize = 15.sp)
-}
-
-@Composable
 private fun ToggleRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().toggleable(value=checked, role=androidx.compose.ui.semantics.Role.Switch, onValueChange=onChange).padding(vertical=4.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, fontSize = 14.sp)
-        Switch(checked = checked, onCheckedChange = onChange)
+        Text(label, fontSize = 17.sp)
+        Switch(checked = checked, onCheckedChange = null)
     }
 }

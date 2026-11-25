@@ -2,9 +2,7 @@ package com.devicetimeline.agent
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
@@ -15,9 +13,6 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -48,9 +43,8 @@ private fun localTime(iso:String?):String? = iso?.let {
 }
 
 @Composable
-internal fun BandHeader(link:BandLink, status:String, onClick:(()->Unit)?) {
-    val hit = if(onClick!=null) Modifier.clickable(role=Role.Button,onClick=onClick) else Modifier
-    Row(Modifier.fillMaxWidth().background(Color.White,RoundedCornerShape(16.dp)).then(hit).padding(15.dp),
+internal fun BandHeader(link:BandLink, status:String) {
+    Row(Modifier.fillMaxWidth().background(Color.White,RoundedCornerShape(16.dp)).padding(15.dp),
         verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
         Canvas(Modifier.size(30.dp,43.dp)) {
             val w=size.width; val h=size.height
@@ -72,7 +66,7 @@ internal fun BandHeader(link:BandLink, status:String, onClick:(()->Unit)?) {
 }
 
 @Composable
-internal fun WristOverview(heart:BandSample?,steps:BandSample?,hours:List<Int?>,sleep:BandSample?) {
+internal fun WristOverview(heart:BandSample?,steps:BandSample?,hours:List<Int?>,sleep:BandSample?,oxygen:BandSample?) {
     Column(Modifier.fillMaxWidth().background(wash,RoundedCornerShape(18.dp)).padding(20.dp),
         verticalArrangement=Arrangement.spacedBy(10.dp)) {
         Text(if(sleep?.asleepMinutes!=null) "最近睡眠" else "最近睡眠时段",fontSize=18.sp,fontWeight=FontWeight.Medium,color=pine)
@@ -117,15 +111,26 @@ internal fun WristOverview(heart:BandSample?,steps:BandSample?,hours:List<Int?>,
             }
         }
     }
-    Row(Modifier.fillMaxWidth().background(Color.White,RoundedCornerShape(18.dp)).padding(20.dp),
-        horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
-        Column(verticalArrangement=Arrangement.spacedBy(3.dp)) {
-            Text("最近心率",fontSize=18.sp,fontWeight=FontWeight.Medium)
-            localTime(heart?.recordedAt)?.let { Text(it,color=label,fontSize=15.sp) }
+    Column(Modifier.fillMaxWidth().background(Color.White,RoundedCornerShape(18.dp)).padding(horizontal=20.dp)) {
+        VitalRow("心率", heart, "次/分")
+        if (oxygen != null) {
+            HorizontalDivider(color=rule)
+            VitalRow("血氧", oxygen, "%")
+        }
+    }
+}
+
+@Composable
+private fun VitalRow(name:String,sample:BandSample?,unit:String) {
+    Row(Modifier.fillMaxWidth().padding(vertical=14.dp),horizontalArrangement=Arrangement.SpaceBetween,
+        verticalAlignment=Alignment.CenterVertically) {
+        Column(verticalArrangement=Arrangement.spacedBy(2.dp)) {
+            Text(name,fontSize=18.sp,fontWeight=FontWeight.Medium)
+            localTime(sample?.recordedAt)?.let { Text(it,color=label,fontSize=15.sp) }
         }
         Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)) {
-            Text(heart?.value?.toString() ?: "—",fontSize=34.sp,fontWeight=FontWeight.SemiBold)
-            Text("次/分",color=label,fontSize=16.sp)
+            Text(sample?.value?.toString() ?: "—",fontSize=29.sp,fontWeight=FontWeight.SemiBold)
+            Text(unit,color=label,fontSize=16.sp)
         }
     }
 }
@@ -133,41 +138,4 @@ internal fun WristOverview(heart:BandSample?,steps:BandSample?,hours:List<Int?>,
 @Composable
 private fun BigNumber(value:String) {
     Text(value,fontSize=43.sp,lineHeight=48.sp,letterSpacing=(-1.5).sp,fontWeight=FontWeight.SemiBold)
-}
-
-@Composable
-internal fun HibiNavigation(page:String,onPage:(String)->Unit) {
-    Column(Modifier.fillMaxWidth().background(Color.White)) {
-        HorizontalDivider(color=rule)
-        Row(Modifier.fillMaxWidth()) {
-            listOf("今日","手环","设置").forEachIndexed { i,name ->
-                val active=page==name
-                val color=if(active) pine else Color(0xFF56645D)
-                Column(Modifier.weight(1f).selectable(active,role=Role.Tab,onClick={onPage(name)})
-                    .padding(vertical=9.dp),horizontalAlignment=Alignment.CenterHorizontally,
-                    verticalArrangement=Arrangement.spacedBy(3.dp)) {
-                    Canvas(Modifier.size(23.dp)) {
-                        val w=size.width;val sw=1.8.dp.toPx()
-                        fun point(x:Float,y:Float)=Offset(w*x,w*y)
-                        when(i){
-                            0 -> {
-                                drawRoundRect(color,point(.12f,.12f),Size(w*.76f,w*.76f),CornerRadius(w*.13f),style=Stroke(sw))
-                                drawPath(Path().apply{moveTo(w*.23f,w*.54f);lineTo(w*.39f,w*.54f);lineTo(w*.47f,w*.36f);lineTo(w*.57f,w*.67f);lineTo(w*.65f,w*.49f);lineTo(w*.77f,w*.49f)},color,style=Stroke(sw))
-                            }
-                            1 -> {
-                                drawRoundRect(color,point(.28f,.2f),Size(w*.44f,w*.6f),CornerRadius(w*.13f),style=Stroke(sw))
-                                drawLine(color,point(.4f,.07f),point(.6f,.07f),sw);drawLine(color,point(.4f,.93f),point(.6f,.93f),sw)
-                            }
-                            else -> listOf(.2f,.5f,.8f).forEachIndexed { j,y ->
-                                drawLine(color,point(.11f,y),point(.89f,y),sw)
-                                drawCircle(Color.White,w*.1f,point(if(j==1).33f else .65f,y))
-                                drawCircle(color,w*.1f,point(if(j==1).33f else .65f,y),style=Stroke(sw))
-                            }
-                        }
-                    }
-                    Text(name,color=color,fontSize=15.sp,fontWeight=if(active) FontWeight.Bold else FontWeight.Normal)
-                }
-            }
-        }
-    }
 }
