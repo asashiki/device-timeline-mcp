@@ -64,3 +64,7 @@ dialog p{color:var(--muted);font-size:15px;margin:8px 0}dialog label{display:blo
 
 .mobile-hour-label{display:none}
 @media(max-width:740px){.ruler-guide,.hour-buttons{display:none}.mobile-hour-label{display:inline-flex;align-items:center;gap:6px}.mobile-hour-label select{font:inherit;background:#fffefa;color:var(--ink);padding:5px;border:1px solid var(--line);border-radius:5px;min-height:38px}.lane-name{font-size:13px;line-height:1.3}.ruler{--name:75px}.ruler-foot{padding-top:6px}}
+
+.private-entry{display:inline-flex;align-items:center;min-height:42px;color:var(--pine);font-size:15px;text-decoration:underline;text-underline-offset:4px}
+.footer-tools{display:flex;align-items:center;flex-wrap:wrap;gap:14px}.footer-tools button{color:var(--muted);min-height:40px;font-size:13px}
+#entry-error{padding:8px 0;color:#874c32}

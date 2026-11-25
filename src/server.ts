@@ -88,12 +88,20 @@ async function main() {
       await transport.handleRequest(req.raw, reply.raw, req.body);
     });
   }
-  registerConsoleBody(app, repo, db, { bodyReadDigest, contextReadDigest }, notionPairWriter(verifierDir));
+  const browserViewDigest = loadVerifier(join(verifierDir, "browser-view.sha256"));
+  let entryPage = "";
+  if (browserViewDigest) {
+    try {
+      const id = readFileSync(join(verifierDir, "browser-view-page.id"), "utf8").trim().replaceAll("-", "");
+      if (/^[0-9a-f]{32}$/i.test(id)) entryPage = "https://app.notion.com/p/" + id;
+    } catch { /* Private Notion entry is optional for self-hosted installations. */ }
+  }
+  registerConsoleBody(app, repo, db, { bodyReadDigest, contextReadDigest, browserViewDigest }, notionPairWriter(verifierDir));
   const hasNotion = registerNotionNow(app, verifierDir);
 
   function page(file: string) {
     const html = readFileSync(join(here, "../public", file), "utf8")
-      .replace('<body data-notion="unconfigured">', `<body data-notion="${hasNotion ? 'configured' : 'unconfigured'}">`);
+      .replace('<body data-notion="unconfigured">', `<body data-entry-page="${entryPage}" data-notion="${hasNotion ? 'configured' : 'unconfigured'}">`);
     return async (_req: unknown, reply: import("fastify").FastifyReply) =>
       reply.header("Cache-Control", "no-cache").type("text/html; charset=utf-8").send(html);
   }
