@@ -91,13 +91,22 @@ async function main() {
   registerConsoleBody(app, repo, db, { bodyReadDigest, contextReadDigest }, notionPairWriter(verifierDir));
   const hasNotion = registerNotionNow(app, verifierDir);
 
-  // Console: a zero-dependency static page that reads the public API.
-  const consoleHtml = readFileSync(join(here, "../public/console.html"), "utf8")
-    .replace('<body data-notion="unconfigured">', `<body data-notion="${hasNotion ? 'configured' : 'unconfigured'}">`);
-  const serveConsole = async (_req: unknown, reply: import("fastify").FastifyReply) =>
-    reply.type("text/html; charset=utf-8").send(consoleHtml);
-  app.get("/", serveConsole);
-  app.get("/console", serveConsole);
+  function page(file: string) {
+    const html = readFileSync(join(here, "../public", file), "utf8")
+      .replace('<body data-notion="unconfigured">', `<body data-notion="${hasNotion ? 'configured' : 'unconfigured'}">`);
+    return async (_req: unknown, reply: import("fastify").FastifyReply) =>
+      reply.header("Cache-Control", "no-cache").type("text/html; charset=utf-8").send(html);
+  }
+  const timelinePage = page("console.html");
+  app.get("/", timelinePage);
+  app.get("/console", timelinePage);
+  app.get("/timeline", timelinePage);
+  app.get("/live", page("live.html"));
+  for (const file of ["day.css", "day.js", "day-map.js", "day-body.js"]) {
+    const content = readFileSync(join(here, "../public", file), "utf8");
+    app.get("/" + file, async (_req, reply) => reply.header("Cache-Control", "no-cache")
+      .type(file.endsWith(".css") ? "text/css" : "text/javascript").send(content));
+  }
 
   // Remote MCP endpoint (streamable HTTP), so claude.ai / other web clients can
   // connect to https://<your-domain><path>. Stateless: a fresh server+transport

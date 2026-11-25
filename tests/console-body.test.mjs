@@ -89,7 +89,7 @@ test('a browser stays authorized through collector rebuilds and logout remains d
   const cookie=login.headers['set-cookie'].split(';')[0];
   const opaque=cookie.slice(cookie.indexOf('=')+1);
   const row=service.db.prepare('SELECT * FROM private_console_body_sessions').get();
-  assert.deepEqual(Object.keys(row),['session_sha256','expires_at']);
+  assert.deepEqual(Object.keys(row),['session_sha256','expires_at','scope']);
   assert.equal(row.session_sha256,createHash('sha256').update(opaque).digest('hex'));
   assert.ok(row.expires_at>Date.now() && !JSON.stringify(row).includes(opaque));
   await service.stop();
