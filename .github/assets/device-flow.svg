@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="430" viewBox="0 0 1200 430" role="img" aria-labelledby="title desc">
+  <title id="title">Device Timeline data flow</title>
+  <desc id="desc">Android, iOS, Windows, and macOS reporters send activity to a private collector, which powers a web console, HTTP API, and AI answers through MCP.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fffafb"/><stop offset="1" stop-color="#f3f2f7"/></linearGradient>
+    <linearGradient id="core" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e85d97"/><stop offset="1" stop-color="#7b70c9"/></linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="7" stdDeviation="10" flood-color="#302a38" flood-opacity=".12"/></filter>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0 10 5 0 10Z" fill="#918998"/></marker>
+  </defs>
+  <rect width="1200" height="430" rx="28" fill="url(#bg)"/>
+  <text x="600" y="57" text-anchor="middle" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="26" font-weight="700" fill="#302a38">One private timeline across every device</text>
+  <text x="600" y="88" text-anchor="middle" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="15" fill="#746d7b">Your devices report activity; your own tools and AI read it back.</text>
+  <g font-family="Inter,Segoe UI,Arial,sans-serif" font-size="16" font-weight="600" fill="#302a38" filter="url(#shadow)">
+    <rect x="72" y="137" width="142" height="54" rx="15" fill="#fff" stroke="#e7dfe4"/><text x="143" y="170" text-anchor="middle">Android</text>
+    <rect x="230" y="137" width="142" height="54" rx="15" fill="#fff" stroke="#e7dfe4"/><text x="301" y="170" text-anchor="middle">iOS</text>
+    <rect x="72" y="211" width="142" height="54" rx="15" fill="#fff" stroke="#e7dfe4"/><text x="143" y="244" text-anchor="middle">Windows</text>
+    <rect x="230" y="211" width="142" height="54" rx="15" fill="#fff" stroke="#e7dfe4"/><text x="301" y="244" text-anchor="middle">macOS</text>
+  </g>
+  <text x="222" y="305" text-anchor="middle" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="13" fill="#746d7b">small per-device reporters</text>
+  <path d="M386 201 H466" stroke="#918998" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+  <g filter="url(#shadow)">
+    <rect x="482" y="132" width="236" height="160" rx="26" fill="url(#core)"/>
+    <text x="600" y="183" text-anchor="middle" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="23" font-weight="750" fill="#fff">Collector</text>
+    <text x="600" y="214" text-anchor="middle" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="14" fill="#fff">Fastify + SQLite</text>
+    <rect x="530" y="235" width="140" height="31" rx="16" fill="#fff" fill-opacity=".18"/>
+    <text x="600" y="255" text-anchor="middle" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="12" font-weight="600" fill="#fff">self-hosted · single user</text>
+  </g>
+  <path d="M718 201 H798" stroke="#918998" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+  <g font-family="Inter,Segoe UI,Arial,sans-serif" filter="url(#shadow)">
+    <rect x="814" y="118" width="314" height="64" rx="16" fill="#fff" stroke="#e7dfe4"/><text x="846" y="145" font-size="16" font-weight="700" fill="#302a38">Web console</text><text x="846" y="164" font-size="13" fill="#746d7b">See current devices and history</text>
+    <rect x="814" y="198" width="314" height="64" rx="16" fill="#fff" stroke="#e7dfe4"/><text x="846" y="225" font-size="16" font-weight="700" fill="#302a38">Read-only API</text><text x="846" y="244" font-size="13" fill="#746d7b">Build a status page or dashboard</text>
+    <rect x="814" y="278" width="314" height="64" rx="16" fill="#fff" stroke="#e7dfe4"/><text x="846" y="305" font-size="16" font-weight="700" fill="#302a38">MCP for AI</text><text x="846" y="324" font-size="13" fill="#746d7b">“How long was I on Bilibili today?”</text>
+  </g>
+  <text x="600" y="385" text-anchor="middle" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="14" font-weight="600" fill="#574f5e">Device tokens in · one consistent timeline out</text>
+</svg>

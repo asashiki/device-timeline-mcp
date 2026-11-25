@@ -14,36 +14,21 @@
 
 > **English** | [中文](README.zh-CN.md)
 
-Self-hosted, multi-device **activity timeline collector** with a built-in **MCP server**.
+**See what app you are using across every device—right now or earlier—and let your AI answer questions about it.**
 
-It tracks *what app you're using, on which device, right now* across **Android, iOS, Windows and macOS**, stores it in a single SQLite database, and exposes it three ways:
+This self-hosted, single-user service collects activity from **Android, iOS, Windows, and macOS** into one SQLite timeline. Read it three ways:
 
 - a **read-only HTTP API** (for your own status pages / frontends),
 - a **web console** for eyeballing the data,
 - an **MCP server** so an AI assistant (Claude Desktop, Claude Code, …) can answer "what is he doing right now?" / "how much time on B站 today?".
 
-Single-user, self-hosted, no account system. You run one collector; each of your devices reports to it with its own token.
+No account system: run one collector and give each device its own token.
 
 ---
 
-## Architecture
+## How it fits together
 
-```
-┌────────────┐   HTTPS POST /api/devices/report (Bearer token)
-│  reporters  │ ────────────────────────────────────┐
-│ android/ios │                                                 ▼
-│ windows/mac │                                         ┌─────────────────┐
-└─────────────┘                                         │  collector       │
-                                                        │  (this service)  │
-┌─────────────┐   GET /api/devices/* (read-only)        │  Fastify+SQLite  │
-│ your web UI │ ◀───────────────────────────────▶│  + /console      │
-└─────────────┘                                         └─────────────────┘
-                                                                 ▲
-┌─────────────┐   stdio (runs on your laptop)                   │ HTTP
-│ Claude /    │ ──▶  src/mcp/server.ts  ──────────────────┘
-│ MCP client  │      (device_status / device_timeline / device_activity_summary)
-└─────────────┘
-```
+![Android, iOS, Windows, and macOS report activity to one collector, which powers a web console, API, and MCP tools](.github/assets/device-flow.svg)
 
 The **collector** runs on a server (Docker). The **MCP server** is a thin stdio
 process you run wherever your AI client lives; it just calls the collector's
