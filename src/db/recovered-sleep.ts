@@ -73,7 +73,7 @@ export function rebuildSleepEstimates(db:DatabaseSync,id:string,now=new Date()){
     const upsert=db.prepare(`INSERT INTO private_sleep_estimates(device_id,started_at,ended_at,received_at)
       VALUES(?,?,?,?) ON CONFLICT(device_id,started_at) DO UPDATE SET ended_at=excluded.ended_at,received_at=excluded.received_at
       WHERE private_sleep_estimates.ended_at!=excluded.ended_at`);
-    const overlaps=db.prepare(`SELECT 1 FROM private_completed_sleep WHERE device_id=? AND started_at<?
+    const overlaps=db.prepare(`SELECT 1 FROM private_native_sleep_history WHERE device_id=? AND started_at<?
       AND ended_at>? AND received_at<=? AND (superseded_at IS NULL OR superseded_at>?) LIMIT 1`);
     const wakeFloor=first+day;
     for(let window=wakeFloor;window<last;window+=day){

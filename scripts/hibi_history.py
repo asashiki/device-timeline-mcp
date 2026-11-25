@@ -18,6 +18,7 @@ def fingerprints(db, checked):
         ('device_activities', 'started_at', 'ended_at', ['device_id','app_id','started_at','ended_at'], 'id'),
         ('device_health', 'recorded_at', None, ['device_id','type','unit','value','recorded_at'], 'id'),
         ('band_samples', 'recorded_at', None, ['device_id','type','value','recorded_at'], 'device_id,type,recorded_at'),
+        ('band_sleep_intervals', 'started_at', 'ended_at', ['device_id','started_at','ended_at','received_at'], 'device_id,started_at'),
         ('private_sleep_estimates', 'started_at', 'ended_at', ['device_id','started_at','ended_at','received_at'], 'device_id,started_at'),
         ('band_sleep', 'started_at', 'ended_at', ['device_id','started_at','ended_at','asleep_minutes'], 'device_id,started_at'),
         ('historical_sleep_imports', 'started_at', 'ended_at', ['device_id','started_at','ended_at','asleep_minutes','source'], 'device_id,started_at'),

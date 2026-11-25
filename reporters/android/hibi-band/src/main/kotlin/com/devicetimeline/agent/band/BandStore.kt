@@ -13,7 +13,7 @@ import java.time.Instant
 import java.security.MessageDigest
 
 /** Keep raw received minutes and pending uploads in the same transaction, outside Android backup. */
-internal class BandStore(context: Context) : SQLiteOpenHelper(context, java.io.File(context.noBackupFilesDir, "band.sqlite").absolutePath, null, 3) {
+internal class BandStore(context: Context) : SQLiteOpenHelper(context, java.io.File(context.noBackupFilesDir, "band.sqlite").absolutePath, null, 4) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE frames(hash TEXT PRIMARY KEY,id_time INTEGER NOT NULL, version INTEGER NOT NULL, tz INTEGER NOT NULL, type INTEGER NOT NULL, bytes BLOB NOT NULL)")
         db.execSQL("CREATE INDEX frame_id ON frames(id_time,version,tz,type)")
@@ -32,9 +32,16 @@ internal class BandStore(context: Context) : SQLiteOpenHelper(context, java.io.F
         db.execSQL("CREATE TABLE sleep_poll(peer TEXT NOT NULL, start INTEGER NOT NULL, poll TEXT NOT NULL, observed INTEGER NOT NULL, counter INTEGER, endpoint INTEGER, PRIMARY KEY(peer,start))")
     }
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        check(oldVersion in 1..2 && newVersion == 3)
+        check(oldVersion in 1..3 && newVersion == 4)
         if (oldVersion == 1) replaySleepV1(db)
-        addProgressSchema(db)
+        if (oldVersion < 3) addProgressSchema(db)
+        val now = System.currentTimeMillis()/1000L
+        db.rawQuery("SELECT bytes FROM frames WHERE type=33 AND version=4 ORDER BY rowid", null).use { rows ->
+            while (rows.moveToNext()) {
+                val frame = FitnessFileFrame.parse(rows.getBlob(0)) ?: continue
+                BandSleep.provisional(frame, now)?.let { storeSleep(db, it, "sleep_band_interval") }
+            }
+        }
     }
     private fun replaySleepV1(db: SQLiteDatabase) {
         addSleepColumns(db)
@@ -47,15 +54,15 @@ internal class BandStore(context: Context) : SQLiteOpenHelper(context, java.io.F
             }
         }
     }
-    private fun storeSleep(db: SQLiteDatabase, session: BandSleep): Int {
-        val args = arrayOf(session.start.toString())
-        val previous = db.rawQuery("SELECT end_at,asleep_min FROM samples WHERE kind='sleep_session' AND at=?", args)
+    private fun storeSleep(db: SQLiteDatabase, session: BandSleep, kind: String = "sleep_session"): Int {
+        val args = arrayOf(kind, session.start.toString())
+        val previous = db.rawQuery("SELECT end_at,asleep_min FROM samples WHERE kind=? AND at=?", args)
             .use { c -> if (c.moveToFirst()) c.getLong(0) to (if (c.isNull(1)) null else c.getInt(1)) else null }
         // A repeated or older summary for the same night can arrive in history after today's file.
         if (previous != null && (previous.first > session.end ||
                 (previous.first == session.end && (session.asleepMinutes == null || session.asleepMinutes == previous.second)))) return 0
-        db.execSQL("INSERT OR REPLACE INTO samples(kind,at,value,uploaded,end_at,asleep_min) VALUES('sleep_session',?,?,0,?,?)",
-            arrayOf(session.start, session.elapsedMinutes, session.end, session.asleepMinutes))
+        db.execSQL("INSERT OR REPLACE INTO samples(kind,at,value,uploaded,end_at,asleep_min) VALUES(?,?,?,0,?,?)",
+            arrayOf(kind, session.start, session.elapsedMinutes, session.end, session.asleepMinutes))
         return 1
     }
     fun storeSleepState(asleep: Boolean, observedAtSeconds: Long, origin: String) {
@@ -111,7 +118,8 @@ internal class BandStore(context: Context) : SQLiteOpenHelper(context, java.io.F
             }
             db.execSQL("INSERT INTO frames(hash,id_time,version,tz,type,bytes) VALUES(?,?,?,?,?,?)", arrayOf(hash, frame.dataId.timestamp, frame.dataId.version, frame.dataId.tzIn15Min, frame.dataId.typeByte, bytes))
             if (!FitnessSync.isDailyRecord(frame.dataId)) {
-                val saved = BandSleep.decode(frame, now)?.let { storeSleep(db, it) } ?: 0
+                val saved = BandSleep.decode(frame, now)?.let { storeSleep(db, it) }
+                    ?: BandSleep.provisional(frame, now)?.let { storeSleep(db, it, "sleep_band_interval") } ?: 0
                 db.setTransactionSuccessful()
                 return saved
             }
@@ -158,7 +166,7 @@ internal class BandStore(context: Context) : SQLiteOpenHelper(context, java.io.F
     }
     private fun sample(row: Cursor): BandSample {
         val kind = row.getString(0)
-        val unit = when (kind) { "heart_rate" -> "bpm"; "steps" -> "count"; "sleep_session" -> "minutes"; "sleep_state", "sleep_interval_progress" -> "state"; "sleep_progress" -> "minutes"; else -> error("Unknown band metric") }
+        val unit = when (kind) { "heart_rate" -> "bpm"; "steps" -> "count"; "sleep_session", "sleep_band_interval" -> "minutes"; "sleep_state", "sleep_interval_progress" -> "state"; "sleep_progress" -> "minutes"; else -> error("Unknown band metric") }
         val meta = if(row.isNull(5)) null else org.json.JSONObject(row.getString(5))
         return BandSample(kind, row.getInt(2), unit, Instant.ofEpochSecond(row.getLong(1)).toString(),
             endAt = if (row.isNull(3)) null else Instant.ofEpochSecond(row.getLong(3)).toString(),

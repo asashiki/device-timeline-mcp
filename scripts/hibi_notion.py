@@ -80,6 +80,10 @@ def mcp_row(facts, checked, old_mac_idle=False):
             end = parse_stamp(session['end']).astimezone(LOCAL)
             prefix = '前一晚 ' if start.date() < end.date() else ''
             text = f'睡眠 {prefix}{start:%H:%M}–{end:%H:%M}'
+            if session.get('source')=='hibi_band_interval':
+                minutes=round((end-start).total_seconds()/60)
+                metrics.append(f'{text}（记录跨度 {minutes//60} 小时 {minutes%60} 分，手环原始时段，未标记结束）')
+                continue
             if session.get('source')=='band_minute_estimate':
                 minutes=round((end-start).total_seconds()/60)
                 metrics.append(f'{text}（约 {minutes//60} 小时 {minutes%60} 分，按心率和步数估算）')

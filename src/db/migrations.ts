@@ -177,6 +177,20 @@ const MIGRATIONS: Array<(db: DatabaseSync) => void> = [
       (SELECT MIN(r.received_at) FROM private_completed_sleep r WHERE r.device_id=e.device_id
        AND r.started_at<e.ended_at AND r.ended_at>e.started_at) AS superseded_at,
       NULL AS import_minutes,NULL AS import_received_at FROM private_sleep_estimates e;`),
+  // Preserve the two valid native endpoints even when the band hasn't finalized the report.
+  (db) => db.exec(`CREATE TABLE band_sleep_intervals (
+      device_id TEXT NOT NULL,started_at TEXT NOT NULL,ended_at TEXT NOT NULL,received_at TEXT NOT NULL,
+      PRIMARY KEY(device_id,started_at),CHECK(ended_at>started_at)) WITHOUT ROWID;
+    CREATE INDEX idx_band_interval_end ON band_sleep_intervals(ended_at);
+    DROP VIEW private_sleep_history;
+    CREATE VIEW private_native_sleep_history AS SELECT * FROM private_completed_sleep
+      UNION ALL SELECT n.device_id,n.started_at,n.ended_at,NULL,n.received_at,'hibi_band_interval',
+        (SELECT MIN(r.received_at) FROM private_completed_sleep r WHERE r.device_id=n.device_id
+         AND r.started_at<n.ended_at AND r.ended_at>n.started_at), NULL,NULL FROM band_sleep_intervals n;
+    CREATE VIEW private_sleep_history AS SELECT * FROM private_native_sleep_history
+      UNION ALL SELECT e.device_id,e.started_at,e.ended_at,NULL,e.received_at,'band_minute_estimate',
+        (SELECT MIN(r.received_at) FROM private_native_sleep_history r WHERE r.device_id=e.device_id
+         AND r.started_at<e.ended_at AND r.ended_at>e.started_at),NULL,NULL FROM private_sleep_estimates e;`),
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;

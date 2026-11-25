@@ -496,11 +496,12 @@ private fun BandMonitorCard(
         if (info.uploadedAt > 0) {
             Text("上次成功上传  " + bandTime(info.uploadedAt), color = Ink.dim, fontSize = 12.sp)
         }
-        val lastSleep = latest["sleep_session"]
+        val lastSleep = listOfNotNull(latest["sleep_session"], latest["sleep_band_interval"])
+            .maxWithOrNull(compareBy<BandSample> { it.recordedAt }.thenBy { it.type == "sleep_session" })
         val wakeDay = lastSleep?.endAt?.let { end ->
             runCatching { Instant.parse(end).atZone(ZoneId.systemDefault()).toLocalDate() }.getOrNull()
         }
-        BandSampleRow("最近一次完整睡眠", lastSleep)
+        BandSampleRow("最近睡眠记录", lastSleep)
         if (enabled && running && wakeDay != java.time.LocalDate.now()) {
             Text("等待手环传回今天结束的完整睡眠。", color = Ink.dim, fontSize = 12.sp)
         }
@@ -542,7 +543,7 @@ private fun BandSampleRow(label: String, sample: BandSample?) {
         "heart_rate" -> "${sample.value} 次/分"
         "steps" -> "${sample.value} 步（该分钟）"
         "sleep_state" -> if (sample.value == 1) "睡着" else "清醒"
-        "sleep_session" -> {
+        "sleep_session", "sleep_band_interval" -> {
             val minutes = sample.asleepMinutes ?: sample.value
             val duration = if (minutes >= 60) "${minutes / 60} 小时 ${minutes % 60} 分" else "${minutes} 分钟"
             if (sample.asleepMinutes != null) "实睡 $duration" else "记录跨度 $duration"
@@ -558,7 +559,7 @@ private fun BandSampleRow(label: String, sample: BandSample?) {
                     (sample.endAt?.let { " 至 " + localBandTime(it) } ?: "")
                 val timeLabel = when (sample.type) {
                     "sleep_state" -> "手机观测于 "
-                    "sleep_session" -> ""
+                    "sleep_session", "sleep_band_interval" -> ""
                     else -> "手环记录于 "
                 }
                 Text(timeLabel + whenMeasured,

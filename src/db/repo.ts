@@ -178,6 +178,7 @@ export class Repository {
   saveBandSamples(deviceId: string, records: ReadonlyArray<{
     type: 'steps' | 'heart_rate'; value: number; recordedAt: string;
   } | {type: 'sleep_session'; value: number; recordedAt: string; valueJson:{endAt:string;asleepMinutes?:number|undefined}}
+    | {type: 'sleep_band_interval'; value: number; recordedAt: string; valueJson:{endAt:string}}
     | {type: 'sleep_state'; value: number; recordedAt: string; valueJson:{origin:'band_basic_status'|'band_status_event';timeBasis:'phone_observed'}}
     | {type: 'sleep_progress' | 'sleep_interval_progress'; value: number; recordedAt: string;
        valueJson: {sessionStart:string;origin:'band_sleep_report';timeBasis:'device_sample'} |
@@ -191,6 +192,9 @@ export class Repository {
     const observation = this.db.prepare(`INSERT INTO band_sleep_observations
       (device_id,session_start,observed_at,state,sleep_minutes,origin,time_basis,received_at,previous_observed_at,previous_minutes)
       VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`);
+    const interval = this.db.prepare(`INSERT INTO band_sleep_intervals(device_id,started_at,ended_at,received_at)
+      VALUES(?,?,?,?) ON CONFLICT(device_id,started_at) DO UPDATE SET
+      ended_at=excluded.ended_at,received_at=excluded.received_at WHERE excluded.ended_at>ended_at`);
     const sleep = this.db.prepare(`INSERT INTO band_sleep
       (device_id,started_at,ended_at,asleep_minutes,received_at) VALUES(?,?,?,?,?)
       ON CONFLICT(device_id,started_at) DO UPDATE SET ended_at=excluded.ended_at,
@@ -201,7 +205,9 @@ export class Repository {
     try {
       for (const record of records) {
         const start = new Date(record.recordedAt).toISOString();
-        if (record.type === 'sleep_session') {
+        if (record.type === 'sleep_band_interval') {
+          interval.run(deviceId, start, new Date(record.valueJson.endAt).toISOString(), receivedAt);
+        } else if (record.type === 'sleep_session') {
           sleep.run(deviceId, start, new Date(record.valueJson.endAt).toISOString(), record.valueJson.asleepMinutes ?? null, receivedAt);
         } else if (record.type === 'sleep_state') {
           observation.run(deviceId, '', start, record.value === 1 ? 'asleep' : 'awake', null,

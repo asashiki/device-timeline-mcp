@@ -96,6 +96,7 @@ function sleepMinutes(value) {
 }
 function sleepSource(kind) {
   if(kind==='mi_fitness_local_log') return '小米运动健康补录';
+  if(kind==='hibi_band_interval') return '手环原始时段，未标记结束';
   if(kind==='band_minute_estimate') return '按心率和步数估算';
   if(kind==='hibi_band_direct') return '手环直连';
   return '来源未标注';
@@ -115,7 +116,7 @@ function showBody(body) {
   $('health').replaceChildren(
     metric('心率',hrValue,hrLine,hr.sampledAt?measuredAt(hr.sampledAt):''),
     metric('今日步数',Number.isFinite(steps.steps)?numberFormat.format(steps.steps)+' 步':'暂无记录',coverage,steps.lastSampleAt?'截至 '+clock(steps.lastSampleAt):''),
-    metric('上次睡眠',last?.source==='band_minute_estimate'?'约 '+sleepMinutes(last.elapsedMinutes):last?sleepMinutes(last.asleepMinutes):'暂无记录',last?measuredAt(last.startedAt)+' 至 '+measuredAt(last.endedAt):'',
+    metric('上次睡眠',last?.source==='hibi_band_interval'?sleepMinutes(last.elapsedMinutes)+'（跨度）':last?.source==='band_minute_estimate'?'约 '+sleepMinutes(last.elapsedMinutes):last?sleepMinutes(last.asleepMinutes):'暂无记录',last?measuredAt(last.startedAt)+' 至 '+measuredAt(last.endedAt):'',
       last?(Number.isFinite(last.asleepMinutes)?'实睡 · ':'')+source+(mixed?'；时长来自'+sleepSource(last.asleepMinutesSource):''):''),
     metric('现在睡了吗',sleepLabel,latestSample?'手环数据 '+measuredAt(latestSample):'','')
   );
