@@ -1,5 +1,4 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { sleepPattern } from './sleep-pattern.js';
 import { dayRangeUtc } from '../time.js';
 
 const TIME_ZONE = 'Asia/Shanghai';
@@ -44,7 +43,7 @@ function currentSleep(db: DatabaseSync, deviceId: string, asOf: string, latestEn
   if (!present) return unknown;
   const trusted = `((state IN ('asleep','awake') AND origin IN ('band_basic_status','band_status_event') AND time_basis='phone_observed')
       OR (state='ongoing' AND session_start!='' AND observed_at>=session_start AND (
-        (origin='band_sleep_report' AND time_basis='device_sample') OR
+        (origin IN ('band_sleep_report','band_sleep_record') AND time_basis='device_sample') OR
         (origin='band_live_progress' AND time_basis='phone_observed_growth' AND previous_observed_at IS NOT NULL AND previous_minutes IS NOT NULL))))`;
   // Retried growth records include their session start. When the session already
   // finished, even a newer phone poll no longer describes the current night.
@@ -85,6 +84,9 @@ function currentSleep(db: DatabaseSync, deviceId: string, asOf: string, latestEn
   if (observations.some(row => row.session_start !== evidence.session_start)) {
     return { ...base, confidence: 'unknown', reason: 'ambiguous_sleep_observations' };
   }
+  if (evidence.origin === 'band_sleep_record') {
+    return { ...base, state:'likely_asleep', reason:'fresh_sleep_record' };
+  }
   // Persisted 'ongoing' is reserved for a device-timestamped sleep interval
   // extension. Poll time, a frame transfer timestamp or a heart rate pulse is
   // never admissible evidence. A session start alone cannot say it continued.
@@ -116,47 +118,6 @@ function currentSleep(db: DatabaseSync, deviceId: string, asOf: string, latestEn
   const growing = previous && evidence.sleep_minutes !== null && evidence.sleep_minutes > previous.sleep_minutes;
   return { ...base, state: 'likely_asleep', reason: growing ? 'cumulative_sleep_increased' : 'device_sleep_interval_extended',
     previousSampleAt: growing ? previous.observed_at : null };
-}
-
-// Minute timestamps identify the recorded activity. A later quiet minute
-// leaves earlier walking evidence valid until its five-minute window expires.
-function withMovementEvidence(db: DatabaseSync, deviceId: string, now: Date, sleep: SleepStatus, completed?: SleepRow) {
-  const asOf = now.toISOString();
-  const earliest = new Date(now.getTime() - FRESH_MS).toISOString();
-  const rows = db.prepare(`SELECT value,recorded_at,received_at FROM band_samples
-    WHERE device_id=? AND type='steps' AND recorded_at>=? AND recorded_at<=? AND received_at<=?
-    AND substr(recorded_at,18)='00.000Z' ORDER BY recorded_at DESC LIMIT 6`)
-    .all(deviceId,earliest,asOf,asOf) as unknown as SampleRow[];
-  const walking = (row: SampleRow) => row.value >= 20 && row.value <= 220;
-  let recent: SampleRow | undefined, previous: SampleRow | undefined;
-  for (let i=1; i<rows.length; i++) {
-    const newer = rows[i-1]!, older = rows[i]!;
-    if (walking(newer) && walking(older) && Date.parse(newer.recorded_at)-Date.parse(older.recorded_at) === 60_000) {
-      recent = newer;
-      previous = older;
-      break;
-    }
-  }
-  const movement = recent ? 'sustained_walking' : rows.length ? 'insufficient_walking' : 'no_recent_steps';
-  const evidenceRows = recent && previous ? [previous, recent] : rows.slice(0,2).reverse();
-  const evidence = {movement, minuteSteps: evidenceRows.map(r=>({sampledAt:r.recorded_at,steps:r.value})),
-    wearState: 'unavailable' as const};
-  const result = {...sleep,evidence};
-  if (movement !== 'sustained_walking' || !recent || !previous || sleep.state === 'awake') return result;
-  const first = Date.parse(previous.recorded_at);
-  const after = Date.parse(recent.recorded_at) + 60_000;
-  const sleepAt = sleep.sampledAt ? Date.parse(sleep.sampledAt) : -Infinity;
-  // A completed report overlapping these minute bins or a conflicting live observation
-  // makes the movement insufficient to call the wearer awake.
-  const overlaps = completed && Date.parse(completed.started_at) < after && Date.parse(completed.ended_at) > first;
-  if (sleepAt >= after) return result;
-  if (overlaps || sleepAt >= first) {
-    return {...result,state:'unknown' as const,confidence:'unknown' as const,reason:'walking_conflicts_with_sleep_evidence'};
-  }
-  return {...result,state:'likely_awake' as const,reason:'sustained_band_step_increments',
-    ...age(recent.recorded_at,now.getTime()),sampledAt:recent.recorded_at,
-    receivedAt:previous.received_at>recent.received_at ? previous.received_at : recent.received_at,
-    sessionStart:null,previousSampleAt:previous.recorded_at,origin:'band_minute_steps',timeBasis:'device_sample' as const};
 }
 
 /** Exposes direct, private samples for the credential's bound phone. The caller owns HTTP authentication. */
@@ -191,16 +152,18 @@ export function readLiveHealth(db: DatabaseSync, deviceId: string, now = new Dat
         AND source IN ('band_minute_estimate','hibi_band_interval') AND ended_at<=? AND received_at<=? AND (superseded_at IS NULL OR superseded_at>?)
         ORDER BY ended_at DESC LIMIT 1`).get(deviceId,asOf,asOf,asOf) as {started_at:string;ended_at:string;received_at:string;source:string} | undefined
     : undefined;
-  const primary = withMovementEvidence(db, deviceId, now,
-    currentSleep(db, deviceId, asOf, completed?.ended_at), completed);
-  const freshConflict = primary.reason === 'walking_conflicts_with_sleep_evidence' ||
-    (primary.sampledAt && age(primary.sampledAt,now.getTime()).confidence === 'fresh');
-  const pattern = primary.state === 'unknown' && !freshConflict
-    ? sleepPattern(db, deviceId, now, hr?.recorded_at, (lastStep ?? latest('steps',''))?.recorded_at, completed?.ended_at) : null;
-  const current = pattern ? {...primary,state:'likely_asleep' as const,reason:'personal_sleep_pattern',
-    ...age(pattern.sampledAt,now.getTime()),sampledAt:pattern.sampledAt,receivedAt:pattern.receivedAt,
-    previousSampleAt:pattern.windowStart,sessionStart:null,origin:'band_minute_pattern',timeBasis:'device_sample' as const,
-    evidence:{...primary.evidence,sleepPattern:pattern}} : primary;
+  const observed = currentSleep(db, deviceId, asOf, completed?.ended_at);
+  // An unfinished interval may already carry a valid native endpoint. Its original time,
+  // including on an archive upload, determines freshness.
+  const interval = fallback?.source === 'hibi_band_interval' ? fallback : undefined;
+  const intervalTime = interval && age(interval.ended_at, now.getTime());
+  const current = interval && intervalTime?.confidence === 'fresh' &&
+      (!completed || interval.started_at >= completed.ended_at) &&
+      (!observed.sampledAt || interval.ended_at > observed.sampledAt)
+    ? { ...observed, ...intervalTime, state:'likely_asleep' as const, reason:'recent_band_sleep_interval',
+        sampledAt:interval.ended_at, receivedAt:interval.received_at, sessionStart:interval.started_at,
+        previousSampleAt:null, origin:'band_sleep_report', timeBasis:'device_sample' as const }
+    : observed;
   return {
     deviceId, asOf, timeZone: TIME_ZONE, freshWithinSeconds: FRESH_MS / 1000,
     source: completed?.source === 'mi_fitness_local_log' || supplement !== null ? 'mixed' : 'hibi_band_direct',

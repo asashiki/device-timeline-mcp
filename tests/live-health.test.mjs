@@ -115,56 +115,30 @@ test('recent phone-observed counter growth reports both real poll times; late up
   assert.equal(read(db).currentSleep.state,'unknown');
 });
 
-test('recent consecutive band activity suggests awake and preserves exact source minutes', t => {
-  const db = setup(t);
-  add(db,'steps',iso(-2),28); add(db,'steps',iso(-1),39);
-  const moving=read(db).currentSleep;
-  assert.equal(moving.state,'likely_awake'); assert.equal(moving.sampledAt,iso(-1));
-  assert.equal(moving.previousSampleAt,iso(-2));assert.equal(moving.origin,'band_minute_steps');
-  assert.deepEqual(moving.evidence.minuteSteps.map(s=>s.steps),[28,39]);
-  assert.equal(moving.evidence.wearState,'unavailable');
+test('a current native sleep record wins independently of step counts and expires at the source-time boundary',t=>{
+  const db=setup(t);
+  add(db,'steps',iso(-2),40);add(db,'steps',iso(-1),50);
+  assert.equal(read(db).currentSleep.state,'unknown');
+  obs(db,'ongoing',iso(-1),{start:iso(-1),origin:'band_sleep_record'});
+  assert.equal(read(db).currentSleep.reason,'fresh_sleep_record');
+  assert.equal(read(db).currentSleep.state,'likely_asleep');
+  assert.equal(readLiveHealth(db,phone,new Date(iso(4))).currentSleep.state,'likely_asleep');
+  assert.equal(readLiveHealth(db,phone,new Date(Date.parse(iso(4))+1)).currentSleep.state,'unknown');
+  obs(db,'awake',now);assert.equal(read(db).currentSleep.state,'awake');
+});
+
+test('provisional interval uses its native endpoint; late upload and repeated reads never refresh it',t=>{
+  const db=setup(t);
+  const addInterval=(start,end,receipt)=>db.prepare('INSERT INTO band_sleep_intervals VALUES(?,?,?,?)')
+    .run(phone,iso(start),iso(end),iso(receipt));
+  addInterval(-600,-400,0);
+  assert.equal(read(db).currentSleep.state,'unknown');
+  addInterval(-45,-1,0);
+  const recent=read(db).currentSleep;
+  assert.equal(recent.reason,'recent_band_sleep_interval');
+  assert.equal(recent.sampledAt,iso(-1));
   assert.equal(readLiveHealth(db,phone,new Date(iso(5))).currentSleep.state,'unknown');
-  add(db,'steps',now,0);add(db,'heart_rate',now,58);
-  assert.equal(read(db).currentSleep.state,'likely_awake');
-  assert.equal(read(db).currentSleep.sampledAt,iso(-1));
-  assert.deepEqual(read(db).currentSleep.evidence.minuteSteps.map(s=>s.steps),[28,39]);
-  assert.equal(readLiveHealth(db,phone,new Date(iso(3))).currentSleep.state,'likely_awake');
-  assert.equal(readLiveHealth(db,phone,new Date(Date.parse(iso(3))+1)).currentSleep.state,'unknown');
-});
-
-test('missing, very small, outlier, wrong-device and late-arriving minutes cannot establish wakefulness', t => {
-  const db = setup(t);
-  add(db,'steps',iso(-4),50);add(db,'steps',iso(-2),44);
-  add(db,'steps',iso(-1),25,'other');add(db,'steps',now,40,phone,iso(2));
-  assert.equal(read(db).currentSleep.state,'unknown');
-  add(db,'steps',iso(-1),1);assert.equal(read(db).currentSleep.state,'unknown');
-  db.prepare('UPDATE band_samples SET value=500 WHERE device_id=? AND recorded_at=?').run(phone,iso(-1));
-  assert.equal(read(db).currentSleep.state,'unknown');
-});
-
-test('both source minutes must have arrived; returns the newest actual qualifying pair even with quiet later minutes',t=>{
-  const db=setup(t);
-  add(db,'steps',iso(-4),31,phone,iso(-2));
-  add(db,'steps',iso(-3),40,phone,iso(-2));
-  add(db,'steps',iso(-2),52,phone,iso(-1));
-  add(db,'steps',iso(-1),0,phone,iso(-1));add(db,'steps',now,0);
-  const at=when=>readLiveHealth(db,phone,new Date(when)).currentSleep;
-  assert.equal(at(iso(-3)).state,'unknown');
-  assert.equal(at(iso(-2)).sampledAt,iso(-3));
-  assert.equal(at(now).state,'likely_awake');
-  assert.deepEqual(at(now).evidence.minuteSteps.map(s=>s.sampledAt),[iso(-3),iso(-2)]);
-});
-test('explicit or inferred sleep evidence and a completed overlapping session constrain wake inference', t => {
-  const db=setup(t);
-  add(db,'steps',iso(-3),33);add(db,'steps',iso(-2),41);
-  obs(db,'asleep',iso(-2));assert.equal(read(db).currentSleep.reason,'walking_conflicts_with_sleep_evidence');
-  obs(db,'asleep',now);assert.equal(read(db).currentSleep.state,'asleep');
-  db.exec('DELETE FROM band_sleep_observations');
-  obs(db,'ongoing',iso(-2),{start:iso(-60)});
-  assert.equal(read(db).currentSleep.state,'unknown');
-  db.exec('DELETE FROM band_sleep_observations');
-  db.prepare('INSERT INTO band_sleep VALUES(?,?,?,?,?)').run(phone,iso(-40),iso(-1),39,now);
-  assert.equal(read(db).currentSleep.state,'unknown');
+  obs(db,'awake',now);assert.equal(read(db).currentSleep.state,'awake');
 });
 
 test('a poll for an already completed session cannot hide newer-session sleep evidence or manufacture a same-time conflict',t=>{

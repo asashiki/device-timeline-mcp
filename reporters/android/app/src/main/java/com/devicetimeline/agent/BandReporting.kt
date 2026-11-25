@@ -114,6 +114,7 @@ internal class BandReporting(private val ctx: Context) {
             val record = JSONObject().put("type", row.type).put("value", row.value)
                 .put("unit", row.unit).put("source", row.source).put("recordedAt", row.recordedAt)
             when (row.type) {
+                "sleep_record_sample" -> record.put("valueJson", JSONObject().put("sessionStart", requireNotNull(row.sessionStart)))
                 "sleep_state" -> record.put("valueJson", JSONObject()
                     .put("origin", requireNotNull(row.stateOrigin)).put("timeBasis", "phone_observed"))
                 "sleep_interval_progress", "sleep_progress" -> {
