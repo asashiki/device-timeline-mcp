@@ -152,9 +152,34 @@ internal object BandActions {
             "workout-types"->f.nested(14).firstOrNull()?.let{"手环运动项目 "+it.nested(1).size+" 项"}
             "screen-items"->f.nested(10).firstOrNull()?.let{"表上菜单 "+it.nested(1).size+" 项"}
             "widgets"->f.nested(28).firstOrNull()?.let{"手环已返回组件布局"}
-            "heart-settings"->f.nested(8).firstOrNull()?.let { settings ->
-                when {settings.num(1)==1L -> "自动心率已关闭"; settings.num(2)==0L -> "心率：智能监测"
-                    settings.num(2)!=null -> "心率：每 ${settings.num(2)} 分钟";else->null}
+            "heart-settings" -> f.nested(8).singleOrNull()?.let { settings ->
+                val disabled = settings.num(1)
+                val interval = settings.num(2)
+                val rate = when {
+                    disabled == 1L -> "自动心率已关闭"
+                    disabled != null && disabled != 0L -> "自动心率状态未识别（$disabled）"
+                    interval == 0L -> "心率：智能监测"
+                    interval != null -> "心率：每 $interval 分钟"
+                    disabled == 0L -> "自动心率已开启，间隔未报告"
+                    else -> "自动心率未报告"
+                }
+                // wear_fitness.proto HeartRate. AdvancedMonitoring.enabled is a bool;
+                // breathingScore and sleepRespiratoryRate have distinct unsupported/off states.
+                val advanced = when (val flag = settings.nested(5).singleOrNull()?.num(1)) {
+                    null -> "未报告"
+                    0L -> "关闭"
+                    1L -> "开启"
+                    else -> "未识别（$flag）"
+                }
+                fun breathing(flag: Long?) = when (flag) {
+                    null -> "未报告"
+                    0L -> "不支持"
+                    1L -> "开启"
+                    2L -> "关闭"
+                    else -> "未识别（$flag）"
+                }
+                listOf(rate, "高精度睡眠检测：$advanced", "睡眠呼吸率检测：${breathing(settings.num(11))}",
+                    "睡眠呼吸质量检测：${breathing(settings.num(9))}").joinToString("；")
             }
             "oxygen-settings"->f.nested(7).firstOrNull()?.let { settings ->
                 when(settings.num(2)){0L->"血氧监测已关闭";1L->"仅睡眠时监测血氧";2L->"全天血氧监测";else->null}

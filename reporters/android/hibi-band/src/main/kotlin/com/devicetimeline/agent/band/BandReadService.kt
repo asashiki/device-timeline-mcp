@@ -389,17 +389,14 @@ class BandReadService : Service() {
                         val read = withTimeout(44000) { collectOnce(round) }
                         sendState("已连接", read.samples, true, read.status + "。" + sleepDiagnostic)
                         main.removeCallbacks(watchdog)
-                        val next=start+300000
-                        while(isActive && SystemClock.elapsedRealtime()<next){
-                            delay(minOf(30000L,(next-SystemClock.elapsedRealtime()).coerceAtLeast(1)))
-                            if(SystemClock.elapsedRealtime()>=next)break
-                            main.postDelayed(watchdog,14000)
-                            // A harmless battery request detects a silent connection without re-pairing.
-                            val battery=DeviceInfoRequest(ch).fetchStatus(7500).battery
-                            deliverPower(battery)
-                            sendState("已连接",connected=true)
-                            main.removeCallbacks(watchdog)
-                        }
+                        // The authenticated socket keeps receiving events and commands while idle.
+                        // Check the battery when the next health read is due.
+                        val next = start + 300_000L
+                        delay((next - SystemClock.elapsedRealtime()).coerceAtLeast(0))
+                        main.postDelayed(watchdog, 14_000)
+                        val battery = DeviceInfoRequest(ch).fetchStatus(7_500).battery
+                        deliverPower(battery)
+                        main.removeCallbacks(watchdog)
                         round = Round()
                         activeRound.set(round)
                     }
