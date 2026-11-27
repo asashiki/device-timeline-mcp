@@ -40,13 +40,28 @@ internal data class BandSleep(val start: Long, val end: Long, val elapsedMinutes
         // The 9 Pro also emits a CRC-valid v4 summary containing only the fixed scalars.
         // Mask D0 advertises an HR series, but the verified file ends before that series.
         private fun compactFinishedV4(frame: FitnessFileFrame, now: Long): BandSleep? {
-            if (frame.dataId.version != 4 || frame.bitmap.singleOrNull()?.toUByte()?.toInt() != 0xd0 ||
+            val (start, end) = compactBounds(frame, now) ?: return null
+            if (end - start !in 60L..86400L) return null
+            return BandSleep(start, end, ((end-start)/60).toInt(), null)
+        }
+
+        // Some files retain a completed night's ID and bed time while advancing only the wake time.
+        // A matching earlier file establishes the reuse. This observation has no new bed time.
+        fun laterWake(frame: FitnessFileFrame, now: Long, previous: BandSleep): Long? {
+            val (start, end) = compactBounds(frame, now) ?: return null
+            if (previous.start != start || end <= previous.end || end-start !in 86_401L..14*86_400L) return null
+            return end
+        }
+
+        fun compactBounds(frame: FitnessFileFrame, now: Long): Pair<Long,Long>? {
+            if (!FitnessSync.isFullDaySleep(frame.dataId) || frame.dataId.version != 4 ||
+                frame.bitmap.singleOrNull()?.toUByte()?.toInt() != 0xd0 ||
                 frame.body.size != 10 || frame.body[0] != 1.toByte()) return null
             val fields = ByteBuffer.wrap(frame.body).order(ByteOrder.LITTLE_ENDIAN)
             val start = Integer.toUnsignedLong(fields.getInt(1))
             val end = Integer.toUnsignedLong(fields.getInt(5))
-            if (start != frame.dataId.timestamp || start < 946684800L || end > now || end - start !in 60..86400L) return null
-            return BandSleep(start, end, ((end-start)/60).toInt(), null)
+            if (start != frame.dataId.timestamp || start < 946684800L || end <= start || end > now) return null
+            return start to end
         }
     }
 }

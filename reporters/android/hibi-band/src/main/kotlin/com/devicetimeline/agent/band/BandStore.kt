@@ -13,9 +13,9 @@ import java.time.Instant
 import java.security.MessageDigest
 
 /** Keep raw received minutes and pending uploads in the same transaction, outside Android backup. */
-internal class BandStore(context: Context) : SQLiteOpenHelper(context, java.io.File(context.noBackupFilesDir, "band.sqlite").absolutePath, null, 6) {
+internal class BandStore(context: Context) : SQLiteOpenHelper(context, java.io.File(context.noBackupFilesDir, "band.sqlite").absolutePath, null, 7) {
     override fun onCreate(db: SQLiteDatabase) {
-        db.execSQL("CREATE TABLE frames(hash TEXT PRIMARY KEY,id_time INTEGER NOT NULL, version INTEGER NOT NULL, tz INTEGER NOT NULL, type INTEGER NOT NULL, bytes BLOB NOT NULL)")
+        db.execSQL("CREATE TABLE frames(hash TEXT PRIMARY KEY,id_time INTEGER NOT NULL, version INTEGER NOT NULL, tz INTEGER NOT NULL, type INTEGER NOT NULL, bytes BLOB NOT NULL, received_at INTEGER)")
         db.execSQL("CREATE INDEX frame_id ON frames(id_time,version,tz,type)")
         db.execSQL("CREATE TABLE samples(kind TEXT NOT NULL,at INTEGER NOT NULL,value INTEGER NOT NULL,uploaded INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(kind,at))")
         addSleepColumns(db)
@@ -32,7 +32,8 @@ internal class BandStore(context: Context) : SQLiteOpenHelper(context, java.io.F
         db.execSQL("CREATE TABLE sleep_poll(peer TEXT NOT NULL, start INTEGER NOT NULL, poll TEXT NOT NULL, observed INTEGER NOT NULL, counter INTEGER, endpoint INTEGER, PRIMARY KEY(peer,start))")
     }
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        check(oldVersion in 1..5 && newVersion == 6)
+        check(oldVersion in 1..6 && newVersion == 7)
+        db.execSQL("ALTER TABLE frames ADD COLUMN received_at INTEGER")
         if (oldVersion == 1) replaySleepV1(db)
         if (oldVersion < 3) addProgressSchema(db)
         val now = System.currentTimeMillis()/1000L
@@ -44,10 +45,12 @@ internal class BandStore(context: Context) : SQLiteOpenHelper(context, java.io.F
         }
         // A previous release stored compact completed sleep files without queuing their intervals.
         // The archive keeps its own checksum, and storeSleep preserves already acknowledged rows.
-        db.rawQuery("SELECT bytes FROM frames WHERE type=33 AND version=4 AND length(bytes)=27", null).use { rows ->
+        db.rawQuery("SELECT bytes,rowid FROM frames WHERE type=33 AND version=4 AND length(bytes)=27 ORDER BY rowid", null).use { rows ->
             while (rows.moveToNext()) {
                 val frame = FitnessFileFrame.parse(rows.getBlob(0)) ?: continue
-                BandSleep.decode(frame, now)?.let { storeSleep(db, it) }
+                val session = BandSleep.decode(frame, now)
+                if (session != null) storeSleep(db, session)
+                else storeLaterWake(db, frame, now, rows.getLong(1))
             }
         }
         // Replay saved minute files once. Preserve acknowledged historical heart and step samples.
@@ -80,6 +83,32 @@ internal class BandStore(context: Context) : SQLiteOpenHelper(context, java.io.F
             arrayOf(kind, session.start, session.elapsedMinutes, session.end, session.asleepMinutes))
         return 1
     }
+    private fun storeLaterWake(db: SQLiteDatabase, frame: FitnessFileFrame, now: Long, rowId: Long): Int {
+        val (start, end) = BandSleep.compactBounds(frame, now) ?: return 0
+        if (end - start !in 86_401L..14*86_400L) return 0
+        // File IDs also contain the time zone and schema version. A sample from another ID is not evidence of reuse.
+        val id = frame.dataId
+        val anchor = db.rawQuery(
+            "SELECT bytes FROM frames WHERE id_time=? AND version=? AND tz=? AND type=? AND rowid<? ORDER BY rowid DESC",
+            arrayOf(start.toString(), id.version.toString(), id.tzIn15Min.toString(), id.typeByte.toString(), rowId.toString())
+        ).use { rows ->
+            var match: BandSleep? = null
+            while (match == null && rows.moveToNext()) {
+                val prior = FitnessFileFrame.parse(rows.getBlob(0)) ?: continue
+                val session = BandSleep.decode(prior, now)
+                if (session != null && session.start == start && session.end < end) match = session
+            }
+            match
+        } ?: return 0
+        val wake = BandSleep.laterWake(frame, now, anchor) ?: return 0
+        val meta = org.json.JSONObject().put("fileStart", instant(start)).toString()
+        return db.compileStatement("INSERT OR IGNORE INTO samples(kind,at,value,progress_json) VALUES('sleep_wake_marker',?,1,?)").use {
+            it.bindLong(1,wake)
+            it.bindString(2,meta)
+            if (it.executeInsert() == -1L) 0 else 1
+        }
+    }
+
     fun storeSleepState(asleep: Boolean, observedAtSeconds: Long, origin: String) {
         require(origin == "band_basic_status" || origin == "band_status_event")
         val meta = org.json.JSONObject().put("origin", origin).put("timeBasis", "phone_observed").toString()
@@ -131,10 +160,20 @@ internal class BandStore(context: Context) : SQLiteOpenHelper(context, java.io.F
             if (db.rawQuery("SELECT 1 FROM frames WHERE hash=?", arrayOf(hash)).use { it.moveToFirst() }) {
                 db.setTransactionSuccessful(); return 0
             }
-            db.execSQL("INSERT INTO frames(hash,id_time,version,tz,type,bytes) VALUES(?,?,?,?,?,?)", arrayOf(hash, frame.dataId.timestamp, frame.dataId.version, frame.dataId.tzIn15Min, frame.dataId.typeByte, bytes))
+            val rowId = db.compileStatement("INSERT INTO frames(hash,id_time,version,tz,type,bytes,received_at) VALUES(?,?,?,?,?,?,?)").use {
+                it.bindString(1,hash)
+                it.bindLong(2,frame.dataId.timestamp)
+                it.bindLong(3,frame.dataId.version.toLong())
+                it.bindLong(4,frame.dataId.tzIn15Min.toLong())
+                it.bindLong(5,frame.dataId.typeByte.toLong())
+                it.bindBlob(6,bytes)
+                it.bindLong(7,now)
+                it.executeInsert()
+            }
             if (!FitnessSync.isDailyRecord(frame.dataId)) {
                 val saved = BandSleep.decode(frame, now)?.let { storeSleep(db, it) }
-                    ?: BandSleep.provisional(frame, now)?.let { storeSleep(db, it, "sleep_band_interval") } ?: 0
+                    ?: BandSleep.provisional(frame, now)?.let { storeSleep(db, it, "sleep_band_interval") }
+                    ?: storeLaterWake(db, frame, now, rowId)
                 val point = BandProgress.freshRecord(frame, now)
                 val added = if (point == null) 0 else {
                     val meta = org.json.JSONObject().put("sessionStart", instant(point.first)).toString()
@@ -199,12 +238,13 @@ internal class BandStore(context: Context) : SQLiteOpenHelper(context, java.io.F
     }
     private fun sample(row: Cursor): BandSample {
         val kind = row.getString(0)
-        val unit = when (kind) { "heart_rate" -> "bpm"; "steps" -> "count"; "oxygen_saturation" -> "%"; "distance" -> "m"; "sleep_session", "sleep_band_interval" -> "minutes"; "sleep_state", "sleep_interval_progress", "sleep_record_sample" -> "state"; "sleep_progress" -> "minutes"; else -> error("Unknown band metric") }
+        val unit = when (kind) { "heart_rate" -> "bpm"; "steps" -> "count"; "oxygen_saturation" -> "%"; "distance" -> "m"; "sleep_session", "sleep_band_interval" -> "minutes"; "sleep_state", "sleep_interval_progress", "sleep_record_sample", "sleep_wake_marker" -> "state"; "sleep_progress" -> "minutes"; else -> error("Unknown band metric") }
         val meta = if(row.isNull(5)) null else org.json.JSONObject(row.getString(5))
         return BandSample(kind, row.getInt(2), unit, Instant.ofEpochSecond(row.getLong(1)).toString(),
             endAt = if (row.isNull(3)) null else Instant.ofEpochSecond(row.getLong(3)).toString(),
             asleepMinutes = if (row.isNull(4)) null else row.getInt(4),
             stateOrigin=if (kind == "sleep_state") meta?.getString("origin") ?: "band_basic_status" else null,
+            fileStart=meta?.takeIf { it.has("fileStart") }?.getString("fileStart"),
             sessionStart=meta?.takeIf { it.has("sessionStart") }?.getString("sessionStart"), progressOrigin=meta?.takeIf { it.has("origin") }?.getString("origin"), progressTimeBasis=meta?.takeIf { it.has("timeBasis") }?.getString("timeBasis"),
             previousObservedAt=meta?.takeIf { it.has("previousObservedAt") }?.getString("previousObservedAt"),
             previousMinutes=meta?.takeIf { it.has("previousMinutes") }?.getInt("previousMinutes"))

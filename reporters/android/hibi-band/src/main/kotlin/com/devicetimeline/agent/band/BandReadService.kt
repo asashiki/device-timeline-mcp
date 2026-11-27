@@ -13,7 +13,6 @@ import com.example.healthapp.data.protocol.fitness.FitnessDataId
 import com.example.healthapp.data.protocol.l2.L2Channel
 import com.example.healthapp.data.protocol.proto.SleepStatus
 import com.example.healthapp.data.protocol.proto.FitnessMessage
-import com.example.healthapp.data.protocol.proto.SystemMessage
 import com.example.healthapp.data.protocol.proto.WearPacket
 import com.example.healthapp.data.protocol.system.DeviceInfoRequest
 import com.example.healthapp.data.transport.SppTransportFactory
@@ -133,6 +132,8 @@ class BandReadService : Service() {
         val id = java.util.UUID.randomUUID().toString()
         val indexes = IndexLists()
         val collected = java.util.Collections.synchronizedSet(mutableSetOf<FitnessDataId>())
+        val deliveries = java.util.concurrent.ConcurrentHashMap<FitnessDataId, Int>()
+        val fileUpdates = kotlinx.coroutines.flow.MutableStateFlow(0)
     }
 
     private suspend fun runSession(ch: WearPacketChannel, pair: Pairing, ready: () -> Unit): Unit = coroutineScope {
@@ -167,7 +168,7 @@ class BandReadService : Service() {
                 val sleepStatus = java.util.concurrent.atomic.AtomicReference("")
                 val liveSleep = java.util.concurrent.atomic.AtomicReference("手环状态未读取")
                 val receiveStatus = java.util.concurrent.atomic.AtomicReference("等待文件")
-                val got = kotlinx.coroutines.flow.MutableStateFlow(0)
+                val lastSleepRequest = mutableMapOf<FitnessDataId, Long>()
                 fun report() {
                     sleepDiagnostic = listOf(liveSleep.get(), indexStatus.get(), receiveStatus.get(), minuteStatus.get(), sleepStatus.get(), "待补睡眠 ${catchup.outstanding()} 份", known.status()).filter { it.isNotEmpty() }.joinToString("，")
                 }
@@ -208,7 +209,10 @@ class BandReadService : Service() {
                                 }
                                 collected.add(frame.dataId)
                                 parts.complete()
-                                got.value = got.value + 1
+                            }
+                            if (actual != null) {
+                                round.deliveries.merge(actual,1,Int::plus)
+                                round.fileUpdates.value++
                             }
                         }
                         val heads = parts.headCounts.toSortedMap().entries.joinToString("/") { "${it.key}×${it.value}" }
@@ -271,113 +275,71 @@ class BandReadService : Service() {
                         val stateQuery = launch(start = CoroutineStart.UNDISPATCHED) {
                             ch.send(WearPacket(type = WearPacket.TYPE_SYSTEM, id = SleepStatus.QUERY))
                         }
-                        // Send this opt-in exact read early on short connections; no synthetic
-                        // IDs and no sleep data from the selector can enter the sample store.
-                        val exact = known.next()
-                        if (exact != null) {
-                            stage = "按已知编号补读睡眠文件"
-                            live.requesting(listOf(exact))
-                            known.begin(exact)
-                            ch.send(WearPacket(type=WearPacket.TYPE_FITNESS, id=FitnessSync.ID_REQUEST_FILES,
-                                fitnessRaw=FitnessMessage.encodeIds(exact.toByteArray())))
-                            known.sent(exact)
-                            report()
-                        }
-                        // Recover one pending file before spending this short authenticated
-                        // connection waiting for two fresh indexes. Continue the normal
-                        // minute-and-sleep request flow immediately after queueing this read.
-                        val recovery = catchup.due(setOfNotNull(exact), 1).firstOrNull()
-                        if (recovery != null) {
-                            stage = "补读之前发现的睡眠文件"
-                            live.requesting(listOf(recovery))
-                            catchup.attempted(listOf(recovery))
-                            ch.send(WearPacket(type=WearPacket.TYPE_FITNESS, id=FitnessSync.ID_REQUEST_FILES,
-                                fitnessRaw=FitnessMessage.encodeIds(recovery.toByteArray())))
-                        }
-                        val earlyMinutes = minuteIDs.forRefresh(System.currentTimeMillis() / 1000, emptyList())
-                        if (earlyMinutes.isNotEmpty()) {
-                            val wire = earlyMinutes.flatMap { it.toByteArray().asIterable() }.toByteArray()
-                            ch.send(WearPacket(type=WearPacket.TYPE_FITNESS, id=FitnessSync.ID_REQUEST_FILES,
-                                fitnessRaw=FitnessMessage.encodeIds(wire)))
-                            minuteStatus.set("已补读最近 ${earlyMinutes.size} 份分钟文件")
-                            report()
-                        }
-                        val keepAlive = launch {
-                            while (isActive) {
-                                delay(8000)
-                                ch.send(WearPacket(type = WearPacket.TYPE_SYSTEM, id = SystemMessage.ID_GET_DEVICE_STATUS))
-                            }
-                        }
                         try {
+                            // The band can return more than one index packet. Keep both receivers
+                            // installed across the cycle, and base every read on an observed ID.
                             stage = "查询当日健康记录"
-                            val issued = mutableSetOf<FitnessDataId>().also { it.addAll(listOfNotNull(exact, recovery)); it.addAll(earlyMinutes) }
-                            val sleepIssued = mutableSetOf<FitnessDataId>().also { set -> recovery?.let { set.add(it) } }
-                            var today: List<FitnessDataId>? = null
-                            var history: List<FitnessDataId>? = null
-                            fun refreshIndex() {
-                                today = indexes.list(FitnessSync.ID_QUERY_TODAY)
-                                history = indexes.list(FitnessSync.ID_QUERY_HISTORY)
-                                indexStatus.set("睡眠索引（当日 ${SleepArchive.label(today)}，历史 ${SleepArchive.label(history)}）")
-                                report()
-                            }
-                            // Subscribe above before sending either query. Keep accepting subsequent responses
-                            // for the whole connection, including multiple lists under the same message ID.
                             ch.send(FitnessSync.buildTodayIdsQuery())
-                            withTimeoutOrNull(3_500) { indexUpdates.first { indexes.list(FitnessSync.ID_QUERY_TODAY) != null } }
-                            refreshIndex()
-                            stage = "查询历史睡眠索引"
+                            withTimeoutOrNull(3500) { indexUpdates.first { indexes.list(FitnessSync.ID_QUERY_TODAY) != null } }
+                            stage = "查询历史健康记录"
                             ch.send(FitnessSync.buildHistoryIdsQuery())
-                            withTimeoutOrNull(2_500) { indexUpdates.first { indexes.list(FitnessSync.ID_QUERY_HISTORY) != null } }
-                            refreshIndex()
-                            fun selectTargets(): List<FitnessDataId> {
-                                val all = (today.orEmpty() + history.orEmpty()).distinct().sortedByDescending { it.timestamp }
-                                val minutes = all.filter(FitnessSync::isDailyRecord)
-                                val sleepers = catchup.due(issued, SleepCatchup.MAX_PER_CYCLE-sleepIssued.size)
-                                // Minute traffic is always eligible, even when an older file never returns.
-                                val rolling = minuteIDs.forRefresh(System.currentTimeMillis() / 1000, minutes)
-                                return ((minutes.take(1) + sleepers + rolling + minutes.filterNot { store.hasCompleteFrame(it) }.take(4))
-                                    .distinct().filterNot { it in issued })
-                            }
-                            suspend fun sendNewTargets(targets: List<FitnessDataId>) {
-                                if (targets.isEmpty()) return
-                                val ids = ByteArray(targets.size * FitnessDataId.SIZE)
-                                targets.forEachIndexed { i,id -> id.toByteArray().copyInto(ids, i * FitnessDataId.SIZE) }
-                                live.requesting(targets)
-                                sleepIssued.addAll(targets.filter(SleepArchive::accepts))
-                                issued.addAll(targets)
-                                // Reserve attempts before submit for bounded recovery after an abrupt disconnect.
-                                catchup.attempted(targets.filter(SleepArchive::accepts))
-                                // The published read command accepts even a single ID in field 2.
+                            withTimeoutOrNull(2500) { indexUpdates.first { indexes.list(FitnessSync.ID_QUERY_HISTORY) != null } }
+
+                            val issued = linkedSetOf<FitnessDataId>()
+                            val exact = known.next()
+                            val deadline = SystemClock.elapsedRealtime() + 32_000L
+                            while (issued.size < SerialFileQueue.MAX_FILES) {
+                                val left = deadline - SystemClock.elapsedRealtime()
+                                if (left < 600) break
+                                val generation = indexUpdates.value
+                                val today = indexes.list(FitnessSync.ID_QUERY_TODAY)
+                                val past = indexes.list(FitnessSync.ID_QUERY_HISTORY)
+                                val now = System.currentTimeMillis() / 1000
+                                lastSleepRequest.entries.removeAll { now - it.value > 24 * 3600 }
+                                val minutes = (today.orEmpty() + past.orEmpty()).distinct()
+                                    .filter(FitnessSync::isDailyRecord).sortedByDescending { it.timestamp }
+                                val rolling = minuteIDs.forRefresh(now, minutes)
+                                val next = SerialFileQueue.next(
+                                    now, today.orEmpty(), exact, catchup.due(issued, SleepCatchup.MAX_PER_CYCLE),
+                                    (rolling + minutes.take(1) + minutes.filterNot { store.hasCompleteFrame(it) }.take(4)).distinct(),
+                                    issued, lastSleepRequest,
+                                )
+                                indexStatus.set("睡眠索引（当日 ${SleepArchive.label(today)}，历史 ${SleepArchive.label(past)}）")
+                                if (next == null) {
+                                    // Recheck for a late or additional index after the queue drains.
+                                    if (withTimeoutOrNull(minOf(left, 1200L)) { indexUpdates.first { it != generation } } == null) break
+                                    continue
+                                }
+                                val before = round.deliveries[next] ?: 0
+                                issued.add(next)
+                                if (SleepArchive.accepts(next)) {
+                                    live.requesting(listOf(next))
+                                    catchup.attempted(listOf(next))
+                                    lastSleepRequest[next] = now
+                                    if (exact == next) known.begin(next)
+                                }
+                                stage = "读取手环健康文件"
+                                // Gadgetbridge uses 8/3 with a single seven-byte ID in field 2.
                                 ch.send(WearPacket(type=WearPacket.TYPE_FITNESS, id=FitnessSync.ID_REQUEST_FILES,
-                                    fitnessRaw=FitnessMessage.encodeIds(ids)))
-                            }
-                            // Re-read both snapshots on every list notification. StateFlow replays
-                            // its current value, covering a second reply arriving during the send.
-                            var processed = -1
-                            stage = "读取手环健康文件"
-                            withTimeoutOrNull(12_000) {
-                                kotlinx.coroutines.flow.combine(got, indexUpdates) { _, n -> n }.first { n ->
-                                    if (n != processed) {
-                                        processed = n
-                                        refreshIndex()
-                                        val send = selectTargets()
-                                        if (send.isNotEmpty()) sendNewTargets(send)
-                                        persistSleepIndex(today,history,indexes,issued)
-                                    }
-                                    issued.isNotEmpty() && collected.containsAll(issued)
+                                    fitnessRaw=FitnessMessage.encodeIds(next.toByteArray())))
+                                if (exact == next) known.sent(next)
+                                withTimeoutOrNull(minOf(4800L, left)) {
+                                    round.fileUpdates.first { (round.deliveries[next] ?: 0) > before }
                                 }
                             }
+                            val today = indexes.list(FitnessSync.ID_QUERY_TODAY)
+                            val past = indexes.list(FitnessSync.ID_QUERY_HISTORY)
+                            persistSleepIndex(today, past, indexes, issued)
+                            minuteStatus.set("本轮请求 ${issued.count(FitnessSync::isDailyRecord)} 份分钟文件")
+                            report()
                             val count = collected.size
                             when {
                                 count > 0 -> BandResult(true, "已保存 $count 组手环文件，新增或更新 ${added.get()} 项", added.get())
-                                issued.isEmpty() -> BandResult(today != null && history != null, "本轮没有取得健康文件", added.get())
+                                issued.isEmpty() -> BandResult(today != null && past != null, "本轮没有取得健康文件", added.get())
                                 else -> BandResult(false, "未取得完整健康记录，可归属的分片已保存", added.get())
                             }
                         } finally {
-                            keepAlive.cancel()
-                            withContext(NonCancellable) {
-                                stateQuery.cancelAndJoin()
-                            }
+                            withContext(NonCancellable) { stateQuery.cancelAndJoin() }
                         }
                     }
                     var round = activeRound.get()

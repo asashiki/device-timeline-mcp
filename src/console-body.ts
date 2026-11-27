@@ -194,8 +194,8 @@ export function registerConsoleBody(app: FastifyInstance, repo: Pick<Repository,
       return reply.code(401).send({error:"browser authorization required"});
     }
     try {
-      const { asOf, timeZone, freshWithinSeconds, source, heartRate, stepsToday, lastCompletedSleep, currentSleep, sleepRecordChecks, wristBattery, oxygenSaturation, distance } = repo.liveBodyNow();
-      return { asOf, timeZone, freshWithinSeconds, source, heartRate, stepsToday, lastCompletedSleep, currentSleep, sleepRecordChecks, wristBattery, oxygenSaturation, distance };
+      const { asOf, timeZone, freshWithinSeconds, source, heartRate, stepsToday, lastCompletedSleep, currentSleep, sleepRecordChecks, wristBattery, oxygenSaturation, distance, lastWakeMarker } = repo.liveBodyNow();
+      return { asOf, timeZone, freshWithinSeconds, source, heartRate, stepsToday, lastCompletedSleep, currentSleep, sleepRecordChecks, wristBattery, oxygenSaturation, distance, lastWakeMarker };
     } catch {
       return reply.code(503).send({error:"body readings unavailable"});
     }

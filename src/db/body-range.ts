@@ -6,6 +6,22 @@ type Sleep = {
   import_minutes: number | null; import_received_at: string | null;
 };
 
+export type WakeMarker = {fileStart:string; endedAt:string; receivedAt:string};
+
+// A stale file identifier can span multiple nights. Only the reported wake endpoint
+// is a measurement. A later complete native session supersedes that isolated endpoint.
+export function readWakeMarkers(db: DatabaseSync, deviceId: string, asOf: string, range?: {from:string; to:string}): WakeMarker[] {
+  const window = range ? "AND m.ended_at >= ? AND m.ended_at < ?" : "";
+  return db.prepare(`SELECT m.file_start AS fileStart, m.ended_at AS endedAt, m.received_at AS receivedAt
+    FROM private_band_wake_markers m
+    WHERE m.device_id=? AND m.received_at<=? AND m.ended_at<=? ${window}
+      AND NOT EXISTS (SELECT 1 FROM private_native_sleep_history s WHERE s.device_id=m.device_id
+        AND s.started_at<=m.ended_at AND s.ended_at>=m.ended_at AND s.ended_at<=? AND s.received_at<=?
+        AND (s.superseded_at IS NULL OR s.superseded_at>?))
+    ORDER BY m.ended_at DESC ${range ? "" : "LIMIT 1"}`)
+    .all(deviceId,asOf,asOf,...(range ? [range.from,range.to] : []),asOf,asOf,asOf) as unknown as WakeMarker[];
+}
+
 export function readBodyRange(db: DatabaseSync, deviceId: string, from: string, to: string, now = new Date()) {
   if (deviceId !== LIVE_HEALTH_DEVICE_ID) throw new Error("Device is outside the live health scope");
   const start = Date.parse(from), end = Date.parse(to);
@@ -42,5 +58,5 @@ export function readBodyRange(db: DatabaseSync, deviceId: string, from: string, 
       coverage:steps.minutes===0?"missing":steps.minutes===expected?"complete":"partial"},
     heartRate:{sampleCount:hr.samples,minBpm:hr.low,maxBpm:hr.high,latestBpm:latest?.value??null,
       latestSampledAt:latest?.recorded_at??null},
-    sleep:{sessions,recordedSessionOverlapMinutes:raw.length?covered/60000:null,asleepMinutes:exact}};
+    sleep:{sessions,wakeMarkers:readWakeMarkers(db,deviceId,asOf,{from,to}),recordedSessionOverlapMinutes:raw.length?covered/60000:null,asleepMinutes:exact}};
 }

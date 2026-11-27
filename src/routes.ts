@@ -47,6 +47,8 @@ const bandBatch = z.object({ records: z.array(z.discriminatedUnion("type", [
   z.object({ ...bandSampleBase, type: z.literal("oxygen_saturation"), unit: z.literal("%"), value: z.number().int().min(1).max(100) }).strict(),
   z.object({ ...bandSampleBase, type: z.literal("distance"), unit: z.literal("m"), value: z.number().int().min(0).max(65534) }).strict(),
   z.object({ ...bandSampleBase, type: z.literal("steps"), unit: z.literal("count"), value: z.number().int().min(0).max(16383) }).strict(),
+  z.object({ ...bandSampleBase, type: z.literal("sleep_wake_marker"), unit: z.literal("state"), value: z.literal(1),
+    valueJson: z.object({fileStart:sessionTimestamp}).strict() }).strict(),
   z.object({ ...bandSampleBase, type: z.literal("sleep_state"), unit: z.literal("state"), value: z.union([z.literal(0), z.literal(1)]),
     valueJson: z.object({origin:z.enum(["band_basic_status","band_status_event"]), timeBasis:z.literal("phone_observed")}).strict() }).strict(),
   z.object({ ...bandSampleBase, type: z.literal("sleep_progress"), unit: z.literal("minutes"), value: z.number().int().min(0).max(1440),
@@ -62,6 +64,11 @@ const bandBatch = z.object({ records: z.array(z.discriminatedUnion("type", [
       endAt: z.string().max(40).datetime({offset:true}), asleepMinutes:z.number().int().min(1).max(1440).optional()
     }).strict() }).strict(),
 ]).refine(r => {
+  if (r.type === "sleep_wake_marker") {
+    const end = Date.parse(r.recordedAt);
+    const span = end - Date.parse(r.valueJson.fileStart);
+    return end <= Date.now() && span > 86400000 && span <= 14 * 86400000;
+  }
   if (r.type === "sleep_progress" || r.type === "sleep_interval_progress") {
     const span = (Date.parse(r.recordedAt) - Date.parse(r.valueJson.sessionStart)) / 60000;
     if (!(span > 0 && span <= 1440)) return false;

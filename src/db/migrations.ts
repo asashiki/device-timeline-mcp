@@ -203,6 +203,9 @@ const MIGRATIONS: Array<(db: DatabaseSync) => void> = [
       device_id TEXT NOT NULL, type TEXT NOT NULL CHECK(type IN ('oxygen_saturation','distance')),
       recorded_at TEXT NOT NULL, value INTEGER NOT NULL, received_at TEXT NOT NULL,
       PRIMARY KEY(device_id,type,recorded_at)) WITHOUT ROWID;`),
+  (db) => db.exec(`CREATE TABLE private_band_wake_markers (
+    device_id TEXT NOT NULL, ended_at TEXT NOT NULL, file_start TEXT NOT NULL, received_at TEXT NOT NULL,
+    PRIMARY KEY(device_id,ended_at), CHECK(ended_at > file_start)) WITHOUT ROWID;`),
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;

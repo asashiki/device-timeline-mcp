@@ -17,7 +17,7 @@ import java.io.File
 
 /** One authenticated band's private measurements. Step values are increments per device minute. */
 data class BandSample(val type: String, val value: Int, val unit: String, val recordedAt: String, val source: String = "hibi_band_direct", val endAt: String? = null, val asleepMinutes: Int? = null, val sessionStart: String? = null,
-    val progressOrigin: String? = null, val progressTimeBasis: String? = null, val previousObservedAt: String? = null, val previousMinutes: Int? = null, val stateOrigin: String? = null)
+    val progressOrigin: String? = null, val progressTimeBasis: String? = null, val previousObservedAt: String? = null, val previousMinutes: Int? = null, val stateOrigin: String? = null, val fileStart: String? = null)
 data class BandResult(val ok: Boolean, val status: String, val samples: Int = 0, val attemptAtMillis: Long = System.currentTimeMillis())
 
 object BandSync {
