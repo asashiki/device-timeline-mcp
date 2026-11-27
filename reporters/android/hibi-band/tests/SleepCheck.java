@@ -38,6 +38,15 @@ class SleepCheck {
             java.util.Arrays.copyOf(compact.getBody(),11)),END+60L)==null);
         check(BandSleep.Companion.decode(new FitnessFileFrame(new FitnessDataId(START+300,32,4,33),
             compact.getBitmap(),compact.getBody()),END+60L)==null);
+        int nextWake = END + 86400;
+        var later = frame(33,4,0xd0,true,START,nextWake,0);
+        check(BandSleep.Companion.decode(later,nextWake+5L)==null);
+        check(Long.valueOf(nextWake).equals(BandSleep.Companion.laterWake(later,nextWake+5L,compactNight)));
+        check(BandSleep.Companion.laterWake(later,nextWake-1L,compactNight)==null);
+        check(BandSleep.Companion.laterWake(compact,END+60L,compactNight)==null);
+        check(BandSleep.Companion.laterWake(frame(33,4,0xd0,true,START+1,nextWake,0),nextWake+5L,compactNight)==null);
+        check(BandSleep.Companion.laterWake(frame(33,4,0xd0,true,START,START+15*86400,0),START+16*86400L,compactNight)==null);
+        check(BandSleep.Companion.laterWake(frame(33,4,0xd0,false,START,nextWake,0),nextWake+5L,compactNight)==null);
         var newer=BandSleep.Companion.decode(frame(33,5,0xc800,true,START,END,427),END+600L);
         check(newer!=null && Integer.valueOf(427).equals(newer.getAsleepMinutes()));
         var invalid=BandSleep.Companion.decode(frame(33,5,0xc000,true,START,END,427),END+600L);

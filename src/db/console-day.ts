@@ -58,6 +58,8 @@ export function activityDay(db: DatabaseSync, day: Day, appLabel: (id: string) =
   return { ...day, devices, activities };
 }
 
+import { readWakeMarkers, type WakeMarker } from "./body-range.js";
+
 type Session = {startedAt:string; endedAt:string; source:string; sessionAsleepMinutes:number|null};
 interface Hour {
   hour:number; from:string; to:string;
@@ -65,7 +67,7 @@ interface Hour {
   heartRate:{sampleCount:number; minBpm:number|null; maxBpm:number|null; latestBpm:number|null; latestSampledAt:string|null};
   oxygenSaturation:{percent:number;sampledAt:string}|null;
   distance:{meters:number|null;observedMinutes:number};
-  sleep:{recordedSessionOverlapMinutes:number|null; sessions:Session[]};
+  sleep:{recordedSessionOverlapMinutes:number|null; sessions:Session[]; wakeMarkers:WakeMarker[]};
 }
 
 export function personalDay(db: DatabaseSync, day: Day, locationAccess: boolean) {
@@ -77,7 +79,7 @@ export function personalDay(db: DatabaseSync, day: Day, locationAccess: boolean)
       hour:Number(hourFormat.format(start)),from:new Date(start).toISOString(),to:new Date(end).toISOString(),
       steps:{steps:null,observedMinutes:0},distance:{meters:null,observedMinutes:0},oxygenSaturation:null,
       heartRate:{sampleCount:0,minBpm:null,maxBpm:null,latestBpm:null,latestSampledAt:null},
-      sleep:{recordedSessionOverlapMinutes:null,sessions:[]},
+      sleep:{recordedSessionOverlapMinutes:null,sessions:[],wakeMarkers:[]},
     });
   }
 
@@ -108,6 +110,10 @@ export function personalDay(db: DatabaseSync, day: Day, locationAccess: boolean)
       hour.distance.meters=(hour.distance.meters??0)+value;
       if (minute !== lastDistanceMinute) { hour.distance.observedMinutes++; lastDistanceMinute=minute; }
     }
+  }
+  for (const marker of readWakeMarkers(db,LIVE_HEALTH_DEVICE_ID,day.asOf,day)) {
+    const hourIndex = Math.floor((Date.parse(marker.endedAt) - first) / 3600000);
+    hours[hourIndex]?.sleep.wakeMarkers.push(marker);
   }
   const sessions=db.prepare(`SELECT started_at AS startedAt,ended_at AS endedAt, source,
     coalesce(asleep_minutes,CASE WHEN import_received_at<=? THEN import_minutes END) AS sessionAsleepMinutes

@@ -66,19 +66,25 @@ internal fun BandHeader(link:BandLink, status:String) {
 }
 
 @Composable
-internal fun WristOverview(heart:BandSample?,steps:BandSample?,hours:List<Int?>,sleep:BandSample?,oxygen:BandSample?) {
+internal fun WristOverview(heart:BandSample?,steps:BandSample?,hours:List<Int?>,sleep:BandSample?,oxygen:BandSample?,wakeMarker:BandSample?) {
     Column(Modifier.fillMaxWidth().background(wash,RoundedCornerShape(18.dp)).padding(20.dp),
         verticalArrangement=Arrangement.spacedBy(10.dp)) {
-        Text(if(sleep?.asleepMinutes!=null) "最近睡眠" else "最近睡眠时段",fontSize=18.sp,fontWeight=FontWeight.Medium,color=pine)
-        val minutes = sleep?.let { it.asleepMinutes ?: it.value }
-        if(minutes!=null) {
-            Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)) {
-                if(minutes>=60){BigNumber((minutes/60).toString());Text("小时",fontSize=18.sp,color=pine)}
-                BigNumber((minutes%60).toString());Text("分",fontSize=18.sp,color=pine)
-            }
-            Text(listOfNotNull(localTime(sleep.recordedAt),localTime(sleep.endAt)).joinToString("  —  "),
-                color=label,fontSize=17.sp)
-        } else Text("还没有睡眠记录",fontSize=22.sp)
+        if (wakeMarker != null) {
+            Text("手环记录的结束时间", fontSize=18.sp, fontWeight=FontWeight.Medium, color=pine)
+            Text(localTime(wakeMarker.recordedAt).orEmpty(), fontSize=32.sp, fontWeight=FontWeight.SemiBold)
+            Text("入睡时间缺失", color=label, fontSize=17.sp)
+        } else {
+            Text(if(sleep?.asleepMinutes!=null) "最近睡眠" else "最近睡眠时段",fontSize=18.sp,fontWeight=FontWeight.Medium,color=pine)
+            val minutes = sleep?.let { it.asleepMinutes ?: it.value }
+            if(minutes!=null) {
+                Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+                    if(minutes>=60){BigNumber((minutes/60).toString());Text("小时",fontSize=18.sp,color=pine)}
+                    BigNumber((minutes%60).toString());Text("分",fontSize=18.sp,color=pine)
+                }
+                Text(listOfNotNull(localTime(sleep.recordedAt),localTime(sleep.endAt)).joinToString("  —  "),
+                    color=label,fontSize=17.sp)
+            } else Text("还没有睡眠记录",fontSize=22.sp)
+        }
     }
     Column(Modifier.fillMaxWidth().background(Color.White,RoundedCornerShape(18.dp)).padding(20.dp),
         verticalArrangement=Arrangement.spacedBy(12.dp)) {

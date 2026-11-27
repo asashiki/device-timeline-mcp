@@ -1,5 +1,7 @@
 package com.devicetimeline.agent
 
+import java.time.Instant
+import java.time.ZoneId
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -360,7 +362,13 @@ private fun BandMonitorCard(
         val lastSleep = listOfNotNull(latest["sleep_session"], latest["sleep_band_interval"])
             .maxWithOrNull(compareBy<BandSample> { it.recordedAt }.thenBy { it.type == "sleep_session" })
         BandHeader(link, text)
-        WristOverview(latest["heart_rate"], latest["steps"], hourlySteps, lastSleep, latest["oxygen_saturation"])
+        val wakeMarker = latest["sleep_wake_marker"]?.takeIf { marker ->
+            val lastEnd = lastSleep?.endAt
+            lastEnd == null || marker.recordedAt > lastEnd &&
+                Instant.parse(marker.recordedAt).atZone(ZoneId.systemDefault()).toLocalDate() >
+                Instant.parse(lastEnd).atZone(ZoneId.systemDefault()).toLocalDate()
+        }
+        WristOverview(latest["heart_rate"], latest["steps"], hourlySteps, lastSleep, latest["oxygen_saturation"], wakeMarker)
         if (hint.isNotEmpty()) Text(hint, color = Ink.warm, fontSize = 15.sp)
         if (!bound && Build.VERSION.SDK_INT >= 31) {
             OutlinedButton(onClick = { choosePairing.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }) {

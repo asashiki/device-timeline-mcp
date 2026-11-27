@@ -5,7 +5,7 @@ import { dayRangeUtc, todayInTz, toUtcIso } from "../time.js";
 import { LIVE_HEALTH_DEVICE_ID, readLiveHealth } from "./live-health.js";
 import { activityDay, consoleDate } from "./console-day.js";
 import { MacContext } from "../mac-context.js";
-import { readBodyRange } from "./body-range.js";
+import { readBodyRange, readWakeMarkers } from "./body-range.js";
 
 export interface ReportInput {
   device: DeviceToken;
@@ -164,6 +164,7 @@ export class Repository {
       currentSleep: { ...observed, evidenceState: observed.state, state },
       sleepRecordChecks: readSleepChecks(this.db, LIVE_HEALTH_DEVICE_ID),
       wristBattery: this.wristBattery(),
+      lastWakeMarker: readWakeMarkers(this.db, LIVE_HEALTH_DEVICE_ID, body.asOf)[0] ?? null,
       ...this.wearableMetrics(dayRangeUtc(todayInTz()).start,body.asOf, true),
     };
   }
@@ -214,6 +215,7 @@ export class Repository {
   saveBandSamples(deviceId: string, records: ReadonlyArray<{
     type: 'steps' | 'heart_rate' | 'oxygen_saturation' | 'distance'; value: number; recordedAt: string;
   } | {type: 'sleep_session'; value: number; recordedAt: string; valueJson:{endAt:string;asleepMinutes?:number|undefined}}
+    | {type: 'sleep_wake_marker'; value: number; recordedAt: string; valueJson:{fileStart:string}}
     | {type: 'sleep_record_sample'; value: number; recordedAt: string; valueJson:{sessionStart:string}}
     | {type: 'sleep_band_interval'; value: number; recordedAt: string; valueJson:{endAt:string}}
     | {type: 'sleep_state'; value: number; recordedAt: string; valueJson:{origin:'band_basic_status'|'band_status_event';timeBasis:'phone_observed'}}
@@ -229,6 +231,8 @@ export class Repository {
       VALUES(?,?,?,?,?) ON CONFLICT(device_id,type,recorded_at) DO UPDATE SET value=excluded.value,received_at=excluded.received_at
       WHERE value!=excluded.value`);
     const receivedAt = new Date().toISOString();
+    const wakeMarker = this.db.prepare(`INSERT INTO private_band_wake_markers
+      (device_id,ended_at,file_start,received_at) VALUES(?,?,?,?) ON CONFLICT DO NOTHING`);
     const observation = this.db.prepare(`INSERT INTO band_sleep_observations
       (device_id,session_start,observed_at,state,sleep_minutes,origin,time_basis,received_at,previous_observed_at,previous_minutes)
       VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`);
@@ -245,7 +249,9 @@ export class Repository {
     try {
       for (const record of records) {
         const start = new Date(record.recordedAt).toISOString();
-        if (record.type === 'sleep_record_sample') {
+        if (record.type === 'sleep_wake_marker') {
+          wakeMarker.run(deviceId, start, new Date(record.valueJson.fileStart).toISOString(), receivedAt);
+        } else if (record.type === 'sleep_record_sample') {
           observation.run(deviceId,new Date(record.valueJson.sessionStart).toISOString(),start,'ongoing',null,
                           'band_sleep_record','device_sample',receivedAt,null,null);
         } else if (record.type === 'sleep_band_interval') {

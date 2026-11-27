@@ -125,7 +125,9 @@ function sleepRows(rows, zone, from) {
       }
     }
   }
-  if (!sessions.size) return null;
+  const wakes = rows.flatMap(row => row.sleep?.wakeMarkers ?? [])
+    .filter(marker => finite(Date.parse(marker.endedAt)));
+  if (!sessions.size && !wakes.length) return null;
   const clock = new Intl.DateTimeFormat('zh-CN', {timeZone: zone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23'});
   const date = new Intl.DateTimeFormat('zh-CN', {timeZone: zone, month: 'numeric', day: 'numeric'});
   const anchor = date.format(new Date(from));
@@ -145,6 +147,12 @@ function sleepRows(rows, zone, from) {
     if (session.source === 'band_minute_estimate') facts.push('估算');
     if (finite(session.sessionAsleepMinutes)) facts.push('整段实睡 ' + duration(Math.round(session.sessionAsleepMinutes)));
     if (facts.length) line.append(node('span', 'body-detail', facts.join(' · ')));
+    list.append(line);
+  }
+  for (const marker of wakes) {
+    const line = node('dd', 'body-session');
+    line.append(document.createTextNode('手环记录的结束时间 '), timeElement(marker.endedAt),
+      node('span', 'body-detail', '入睡时间缺失'));
     list.append(line);
   }
   return list;
