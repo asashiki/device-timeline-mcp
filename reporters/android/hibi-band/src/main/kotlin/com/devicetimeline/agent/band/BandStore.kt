@@ -13,7 +13,7 @@ import java.time.Instant
 import java.security.MessageDigest
 
 /** Keep raw received minutes and pending uploads in the same transaction, outside Android backup. */
-internal class BandStore(context: Context) : SQLiteOpenHelper(context, java.io.File(context.noBackupFilesDir, "band.sqlite").absolutePath, null, 5) {
+internal class BandStore(context: Context) : SQLiteOpenHelper(context, java.io.File(context.noBackupFilesDir, "band.sqlite").absolutePath, null, 6) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE frames(hash TEXT PRIMARY KEY,id_time INTEGER NOT NULL, version INTEGER NOT NULL, tz INTEGER NOT NULL, type INTEGER NOT NULL, bytes BLOB NOT NULL)")
         db.execSQL("CREATE INDEX frame_id ON frames(id_time,version,tz,type)")
@@ -32,7 +32,7 @@ internal class BandStore(context: Context) : SQLiteOpenHelper(context, java.io.F
         db.execSQL("CREATE TABLE sleep_poll(peer TEXT NOT NULL, start INTEGER NOT NULL, poll TEXT NOT NULL, observed INTEGER NOT NULL, counter INTEGER, endpoint INTEGER, PRIMARY KEY(peer,start))")
     }
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        check(oldVersion in 1..4 && newVersion == 5)
+        check(oldVersion in 1..5 && newVersion == 6)
         if (oldVersion == 1) replaySleepV1(db)
         if (oldVersion < 3) addProgressSchema(db)
         val now = System.currentTimeMillis()/1000L
@@ -42,8 +42,16 @@ internal class BandStore(context: Context) : SQLiteOpenHelper(context, java.io.F
                 BandSleep.provisional(frame, now)?.let { storeSleep(db, it, "sleep_band_interval") }
             }
         }
+        // A previous release stored compact completed sleep files without queuing their intervals.
+        // The archive keeps its own checksum, and storeSleep preserves already acknowledged rows.
+        db.rawQuery("SELECT bytes FROM frames WHERE type=33 AND version=4 AND length(bytes)=27", null).use { rows ->
+            while (rows.moveToNext()) {
+                val frame = FitnessFileFrame.parse(rows.getBlob(0)) ?: continue
+                BandSleep.decode(frame, now)?.let { storeSleep(db, it) }
+            }
+        }
         // Replay saved minute files once. Preserve acknowledged historical heart and step samples.
-        db.rawQuery("SELECT bytes FROM frames WHERE type=0 ORDER BY rowid", null).use { rows ->
+        if (oldVersion < 5) db.rawQuery("SELECT bytes FROM frames WHERE type=0 ORDER BY rowid", null).use { rows ->
             while (rows.moveToNext()) {
                 val frame = FitnessFileFrame.parse(rows.getBlob(0)) ?: continue
                 storeMinutes(db, frame, now, extendedOnly = true)

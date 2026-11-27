@@ -4,6 +4,8 @@ package com.devicetimeline.agent.band
 import com.example.healthapp.data.protocol.fitness.FitnessFileFrame
 import com.example.healthapp.data.protocol.fitness.FitnessSleepReportParser
 import com.example.healthapp.data.protocol.fitness.FitnessSync
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 /** Native timestamps belong to the session; device capture/transfer time is not a sleep timestamp. */
 internal data class BandSleep(val start: Long, val end: Long, val elapsedMinutes: Int, val asleepMinutes: Int?) {
@@ -23,7 +25,7 @@ internal data class BandSleep(val start: Long, val end: Long, val elapsedMinutes
         fun decode(frame: FitnessFileFrame, now: Long): BandSleep? {
             if (!FitnessSync.isFullDaySleep(frame.dataId)) return SleepArchive.knownSession(frame, now)
             if (frame.dataId.version !in 1..6) return null
-            val report = FitnessSleepReportParser.parse(frame) ?: return null
+            val report = FitnessSleepReportParser.parse(frame) ?: return compactFinishedV4(frame, now)
             val start = report.startTimeSec ?: return null
             val end = report.endTimeSec ?: return null
             if (report.sleepFull != 1 || start < 946684800L || end <= start || end > now) return null
@@ -33,6 +35,18 @@ internal data class BandSleep(val start: Long, val end: Long, val elapsedMinutes
             // Native v1-v4 has times only; schema v5/v6 gates actual sleep duration by a validity bit.
             val asleep = report.asleepDurationMin?.takeIf { it > 0 && it <= (span + 59) / 60 }?.toInt()
             return BandSleep(start, end, minutes.toInt(), asleep)
+        }
+
+        // The 9 Pro also emits a CRC-valid v4 summary containing only the fixed scalars.
+        // Mask D0 advertises an HR series, but the verified file ends before that series.
+        private fun compactFinishedV4(frame: FitnessFileFrame, now: Long): BandSleep? {
+            if (frame.dataId.version != 4 || frame.bitmap.singleOrNull()?.toUByte()?.toInt() != 0xd0 ||
+                frame.body.size != 10 || frame.body[0] != 1.toByte()) return null
+            val fields = ByteBuffer.wrap(frame.body).order(ByteOrder.LITTLE_ENDIAN)
+            val start = Integer.toUnsignedLong(fields.getInt(1))
+            val end = Integer.toUnsignedLong(fields.getInt(5))
+            if (start != frame.dataId.timestamp || start < 946684800L || end > now || end - start !in 60..86400L) return null
+            return BandSleep(start, end, ((end-start)/60).toInt(), null)
         }
     }
 }

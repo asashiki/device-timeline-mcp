@@ -30,6 +30,14 @@ class SleepCheck {
         check(partial!=null && partial.getStart()==START && partial.getEnd()==END && partial.getAsleepMinutes()==null);
         check(BandSleep.Companion.provisional(frame(33,4,0x80,false,START,END,0),END+600L)==null);
         check(BandSleep.Companion.provisional(frame(33,4,0xc0,false,START,END,0),END-1L)==null);
+        var compact = frame(33,4,0xd0,true,START,END,0);
+        var compactNight = BandSleep.Companion.decode(compact,END+60L);
+        check(compactNight != null && compactNight.getElapsedMinutes()==451 && compactNight.getAsleepMinutes()==null);
+        check(BandSleep.Companion.decode(frame(33,4,0xd0,false,START,END,0),END+60L)==null);
+        check(BandSleep.Companion.decode(new FitnessFileFrame(compact.getDataId(),compact.getBitmap(),
+            java.util.Arrays.copyOf(compact.getBody(),11)),END+60L)==null);
+        check(BandSleep.Companion.decode(new FitnessFileFrame(new FitnessDataId(START+300,32,4,33),
+            compact.getBitmap(),compact.getBody()),END+60L)==null);
         var newer=BandSleep.Companion.decode(frame(33,5,0xc800,true,START,END,427),END+600L);
         check(newer!=null && Integer.valueOf(427).equals(newer.getAsleepMinutes()));
         var invalid=BandSleep.Companion.decode(frame(33,5,0xc000,true,START,END,427),END+600L);
