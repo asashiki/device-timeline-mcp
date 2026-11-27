@@ -267,6 +267,21 @@ private fun AgentScreen(
                     else { band.enable(on); bandEnabled = on; if (running) startService(TrackingService.ACTION_START) }
                 }
             }
+            if (hasBand && bandEnabled) {
+                val linkClient = com.devicetimeline.agent.band.BandLinkClient
+                var isolation by remember { mutableStateOf(linkClient.isSleepIsolation(context)) }
+                LaunchedEffect(isolation) {
+                    while (isolation) {
+                        kotlinx.coroutines.delay(15000)
+                        isolation = linkClient.isSleepIsolation(context)
+                    }
+                }
+                ToggleRow("临时按需连接手环", isolation) { on ->
+                    linkClient.setSleepIsolation(context, on)
+                    isolation = linkClient.isSleepIsolation(context)
+                }
+                if (isolation) Text("每五分钟同步，提醒时连接。24 小时后恢复常连。", color=Ink.dim, fontSize=15.sp)
+            }
             ToggleRow("开机后自动记录", autoStart) { autoStart = it; persist() }
             ToggleRow("手机电量", reportBattery) { reportBattery = it; persist() }
             LocationRow() { if (running) startService(TrackingService.ACTION_START) }
