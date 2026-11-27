@@ -34,7 +34,7 @@ export function registerWrist(app:FastifyInstance,db:DatabaseSync,auth:DeviceAut
    CREATE TABLE IF NOT EXISTS private_wrist_wake_followup (
      parent TEXT PRIMARY KEY, command_id TEXT NOT NULL UNIQUE);
    `);
- let lastPhone:{at:number;connected:boolean;note:string;since:number;battery?:number;batteryAt?:number;powerMode?:string}|null=null;
+ let lastPhone:{at:number;connected:boolean;note:string;since:number;standby?:boolean;battery?:number;batteryAt?:number;powerMode?:string}|null=null;
  let wake:(()=>void)|undefined; let pollGeneration=0;
  const opts={logLevel:'silent' as const,bodyLimit:4096};
  function agent(req:FastifyRequest,reply:FastifyReply){
@@ -51,7 +51,7 @@ export function registerWrist(app:FastifyInstance,db:DatabaseSync,auth:DeviceAut
  }
  function clean(now:number){
    db.prepare("UPDATE private_wrist_commands SET status='expired' WHERE status='queued' AND expires<?").run(now);
-   db.prepare("UPDATE private_wrist_commands SET status='unconfirmed' WHERE status='claimed' AND claimed<?").run(now-60000);
+   db.prepare("UPDATE private_wrist_commands SET status='unconfirmed' WHERE status='claimed' AND claimed<?").run(now-120000);
    db.prepare('DELETE FROM private_wrist_commands WHERE expires<?').run(now-7*86400000);
    db.exec('DELETE FROM private_wrist_wake_followup WHERE parent NOT IN (SELECT id FROM private_wrist_commands)');
  }
@@ -65,7 +65,7 @@ export function registerWrist(app:FastifyInstance,db:DatabaseSync,auth:DeviceAut
    const now=Date.now();clean(now);
    const battery = db.prepare('SELECT pct,mode,measured_at,received_at FROM wrist_power_samples WHERE device_id=? ORDER BY measured_at DESC LIMIT 1').get(LIVE_HEALTH_DEVICE_ID);
    const phoneOnline=!!lastPhone && now-lastPhone.at<65000;
-   return {actions:Object.keys(actions),phoneOnline,link:lastPhone && (phoneOnline ? lastPhone : {...lastPhone,connected:false,since:0,note:'手机离线'}),
+   return {actions:Object.keys(actions),phoneOnline,link:lastPhone && (phoneOnline ? lastPhone : {...lastPhone,connected:false,standby:false,since:0,note:'手机离线'}),
      wristBattery:battery ? {percent:battery.pct,powerMode:battery.mode,measuredAt:new Date(Number(battery.measured_at)).toISOString(),receivedAt:new Date(Number(battery.received_at)).toISOString()} : null};
  });
  app.post('/api/agent/wrist',opts,async(req,reply)=>{
@@ -108,7 +108,7 @@ export function registerWrist(app:FastifyInstance,db:DatabaseSync,auth:DeviceAut
     if(r.status!=='queued')return reply.code(409).send({error:'Already delivered or finished'});
     db.prepare("UPDATE private_wrist_commands SET status='cancelled' WHERE id=?").run(r.id);return view(read(r.id)!);
  });
- const state=z.object({connected:z.boolean(),note:z.string().max(100),since:z.number().int().nonnegative(),battery:z.number().int().min(0).max(100).optional(),batteryAt:z.number().int().positive().optional(),powerMode:z.enum(["charging","discharging","full","unknown"]).optional(),version:z.literal(1)}).strict();
+ const state=z.object({connected:z.boolean(),standby:z.boolean().optional(),note:z.string().max(100),since:z.number().int().nonnegative(),battery:z.number().int().min(0).max(100).optional(),batteryAt:z.number().int().positive().optional(),powerMode:z.enum(["charging","discharging","full","unknown"]).optional(),version:z.literal(1)}).strict();
  app.post('/api/devices/wrist/next',opts,async(req,reply)=>{
     if(!phone(req,reply))return;
     const parsed=state.safeParse(req.body);if(!parsed.success)return reply.code(400).send({error:'Invalid link report'});
@@ -120,14 +120,16 @@ export function registerWrist(app:FastifyInstance,db:DatabaseSync,auth:DeviceAut
       db.prepare(`INSERT OR IGNORE INTO wrist_power_samples(device_id,measured_at,pct,mode,received_at)
         VALUES(?,?,?,?,?)`).run(LIVE_HEALTH_DEVICE_ID, report.batteryAt, report.battery, report.powerMode ?? 'unknown', at);
     }
-    lastPhone = {at, ...report};
+    const protocol = req.headers['x-hibi-wrist-version'];
+    const standby = protocol === '3' && !report.connected && report.standby === true;
+    lastPhone = {at, ...report, standby};
     clean(at);
     const generation = ++pollGeneration;
     wake?.();
-    if(!parsed.data.connected){await pause(12000);return {command:null};}
+    if(!report.connected && !standby){await pause(12000);return {command:null};}
     for(let i=0;i<5 && !req.raw.socket.destroyed && generation===pollGeneration;i++){
       const now=Date.now();
-      const supportsWake=req.headers['x-hibi-wrist-version']==='2';
+      const supportsWake=protocol === '2' || protocol === '3';
       const next=db.prepare(`SELECT * FROM private_wrist_commands WHERE status='queued' AND due<=? AND expires>=?
         AND (action NOT IN ('wake-at','wake-ring') OR ?) ORDER BY due LIMIT 1`).get(now,now,Number(supportsWake)) as Row|undefined;
       if(next && db.prepare("UPDATE private_wrist_commands SET status='claimed',claimed=? WHERE id=? AND status='queued'").run(now,next.id).changes){

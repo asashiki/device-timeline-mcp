@@ -50,7 +50,7 @@ jobs:
         working-directory: reporters/android
         run: |
           set -euo pipefail
-          version_code=$((46 + GITHUB_RUN_NUMBER))
+          version_code=$((47 + GITHUB_RUN_NUMBER))
           if [[ -n "$KEYSTORE_B64" ]]; then
             : "${KS_PASSWORD:?Missing keystore password}" "${KS_ALIAS:?Missing key alias}" "${KS_KEY_PASSWORD:?Missing key password}"
             umask 077

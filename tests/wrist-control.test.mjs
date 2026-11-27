@@ -101,3 +101,20 @@ test('wake-at stages the alarm before its target, ignores legacy phones and neve
   const expired = await app.inject({url:wrist+'/'+lateId,headers:{authorization:'Bearer '+secret}});
   assert.equal(expired.json().status,'expired');
 });
+
+test('a standby phone can claim a command while reporting its band link as disconnected', async t => {
+  const db = new DatabaseSync(':memory:'); runMigrations(db);
+  const app = Fastify(), key = 's'.repeat(40), token = 'p'.repeat(40);
+  const auth = new DeviceAuth([{deviceId:'android-phone',deviceName:'Phone',platform:'android',token}]);
+  registerWrist(app,db,auth,createHash('sha256').update(key).digest());
+  t.after(async()=>{await app.close();db.close();});
+  const post=(url,credential,payload,extra={})=>app.inject({method:'POST',url,
+    headers:{authorization:'Bearer '+credential,...extra},payload});
+  const id=randomUUID();
+  await post('/api/agent/wrist',key,{action:'battery',requestId:id});
+  const reply=await post('/api/devices/wrist/next',token,{version:1,connected:false,standby:true,since:0,note:'standby'},
+    {'x-hibi-wrist-version':'3'});
+  assert.equal(reply.json().command.id,id);
+  const status=(await app.inject({url:'/api/agent/wrist',headers:{authorization:'Bearer '+key}})).json();
+  assert.equal(status.link.connected,false);assert.equal(status.link.standby,true);
+});

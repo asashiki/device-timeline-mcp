@@ -17,6 +17,8 @@ import com.example.healthapp.data.protocol.proto.WearPacket
 import com.example.healthapp.data.protocol.system.DeviceInfoRequest
 import com.example.healthapp.data.transport.SppTransportFactory
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.sync.withLock
@@ -32,7 +34,12 @@ class BandReadService : Service() {
     private val watchdog = Runnable { sendState("连接超时，准备重连"); endProcess() }
     private var runner: Job? = null
     private var owner: Messenger? = null
-    @Volatile private var session: WearPacketChannel? = null
+    private val session = MutableStateFlow<WearPacketChannel?>(null)
+    private val shortConnections = MutableStateFlow(false)
+    private val commands = MutableStateFlow(0)
+    private var nextReadAt = 0L // elapsedRealtime; only maintain's coroutine updates this
+    private fun countCommand(delta: Int) = synchronized(commands) { commands.value += delta }
+
     private val controlLock = kotlinx.coroutines.sync.Mutex()
     private var connectionAt = 0L
     private fun deliverPower(battery:com.example.healthapp.data.protocol.proto.Battery) {
@@ -44,10 +51,10 @@ class BandReadService : Service() {
         runCatching{owner?.send(message)}
     }
 
-    private fun sendState(text: String, samples: Int = 0, connected: Boolean = false, diagnostic: String = "") {
+    private fun sendState(text: String, samples: Int = 0, connected: Boolean = false, diagnostic: String = "", standby: Boolean = false) {
         try { owner?.send(Message.obtain(null,2).apply {
             data = Bundle().apply {putString("status",text);putInt("samples",samples);putBoolean("ok",connected)
-                putLong("connectedAt",if(connected)connectionAt else 0);putString("diagnostic",diagnostic)}
+                putLong("connectedAt",if(connected)connectionAt else 0);putString("diagnostic",diagnostic);putBoolean("standby",standby)}
         }) } catch (_: RemoteException) { }
     }
     private fun command(msg: Message) {
@@ -55,17 +62,36 @@ class BandReadService : Service() {
         val requestId=msg.data.getString("id") ?: return
         val action=msg.data.getString("action") ?: return
         val raw=msg.data.getString("args") ?: "{}"
+        countCommand(1)
         scope.launch {
             val result=try {
-                val channel=session
-                if(channel==null) ControlResult("offline","手环尚未连接")
-                else controlLock.withLock {
-                    if(session !== channel) ControlResult("offline","手环连接已中断")
-                    else withTimeout(if (action == "wake-ring") 35000L else 12000L){ BandActions.execute(applicationContext,channel,action,org.json.JSONObject(raw)) }
+                val args = org.json.JSONObject(raw)
+                val expires = args.optLong("__expiresAt", Long.MAX_VALUE)
+                args.remove("__expiresAt")
+                // Only maintain opens sockets. Await authentication first, then hold the
+                // same lock as a planned release for the entire action (including find-stop).
+                val budget = if (action == "wake-ring") 35_000L else 12_000L
+                withTimeout(22_000L + budget) {
+                    suspend fun dispatch(): ControlResult {
+                        while (true) {
+                            if (System.currentTimeMillis() >= expires) return ControlResult("expired", "指令已过期")
+                            val ch = session.first { it != null } ?: continue
+                            val reply = controlLock.withLock {
+                                when {
+                                    session.value !== ch -> null
+                                    System.currentTimeMillis() >= expires -> ControlResult("expired", "指令已过期")
+                                    else -> withTimeout(budget) { BandActions.execute(applicationContext, ch, action, args) }
+                                }
+                            }
+                            if (reply != null) return reply
+                        }
+                    }
+                    dispatch()
                 }
-            } catch(e:TimeoutCancellationException){ControlResult("unconfirmed","手环未回执")}
+            } catch(e:TimeoutCancellationException){ControlResult("unconfirmed","连接或回执超时")}
               catch(e:CancellationException){throw e}
               catch(e:Exception){ControlResult("failed","指令未完成")}
+              finally { countCommand(-1) }
             runCatching {answer.send(Message.obtain(null,4).apply { data=Bundle().apply {
                 putString("id",requestId);putString("status",result.status);putString("detail",result.detail)
             } })}
@@ -76,6 +102,7 @@ class BandReadService : Service() {
             if(msg.what==3){ command(msg);return }
             if(msg.what!=1 || msg.replyTo==null)return
             owner=msg.replyTo
+            shortConnections.value = msg.data.getBoolean("suspendBetweenSyncs", false)
             if(runner?.isActive==true)return
             runner=scope.launch { maintain() }
         }
@@ -88,7 +115,16 @@ class BandReadService : Service() {
         while(currentCoroutineContext().isActive){
             var ready=false
             try {
+                val remaining = nextReadAt - SystemClock.elapsedRealtime()
+                if (shortConnections.value && remaining > 0 && commands.value == 0) {
+                    sendState("按需连接 · 等待下次同步", standby = true)
+                    withTimeoutOrNull(remaining) {
+                        combine(shortConnections, commands) { short, n -> !short || n > 0 }.first { it }
+                    }
+                }
                 connectAndRun { ready=true;backoff=5 }
+                // Intentional release has already closed the socket. Preserve the next scheduled read.
+                continue
             } catch(e:TimeoutCancellationException) {sendState("连接超时 · "+stage)}
               catch(e:CancellationException) {throw e}
               catch(e:Exception) {
@@ -98,7 +134,7 @@ class BandReadService : Service() {
                     else -> stage+"中断"
                 }
                 sendState(detail+"，"+backoff+" 秒后重连")
-              } finally {session=null;main.removeCallbacks(watchdog)}
+              } finally {session.value=null;main.removeCallbacks(watchdog)}
             delay(backoff*1000L)
             if(!ready)backoff=(backoff*2).coerceAtMost(60)
         }
@@ -121,7 +157,7 @@ class BandReadService : Service() {
                 stage="建立数据通道";ch.start();ch.handshake()
                 stage="验证配对";AuthHandshake(ch,pair.key).run()
                 runSession(ch, pair, ready)
-            } finally {session=null;lost.cancel();fatal.cancel()}
+            } finally {session.value=null;lost.cancel();fatal.cancel()}
         } finally {
             main.removeCallbacks(watchdog);pair.key.fill(0)
             withContext(NonCancellable){ch.stop()}
@@ -261,10 +297,10 @@ class BandReadService : Service() {
                     check(DeviceInfoRequest(ch).fetchInfo().model == "M2401B1") { "型号不符" }
                     connectionAt = System.currentTimeMillis()
                     verified.complete(true)
-                    session = ch
+                    session.value = ch
                     ready()
                     sendState("已连接", connected = true)
-                    withTimeoutOrNull(7800) { deliverPower(DeviceInfoRequest(ch).fetchStatus(7000).battery) }
+
                     suspend fun collectOnce(round: Round): BandResult = coroutineScope {
                         val indexes = round.indexes
                         val collected = round.collected
@@ -343,22 +379,38 @@ class BandReadService : Service() {
                         }
                     }
                     var round = activeRound.get()
+                    main.removeCallbacks(watchdog)
                     while (isActive) {
+                        val remaining = nextReadAt - SystemClock.elapsedRealtime()
+                        if (remaining > 0 && shortConnections.value) {
+                            // A command-only wake keeps its session until the pending actions finish.
+                            withTimeoutOrNull(remaining) {
+                                combine(shortConnections, commands) { short, n -> !short || n == 0 }.first { it }
+                            }
+                            if (shortConnections.value && SystemClock.elapsedRealtime() < nextReadAt) {
+                                val close = controlLock.withLock {
+                                    if (!shortConnections.value || commands.value > 0) false
+                                    else { session.value = null; true }
+                                }
+                                if (close) break
+                            }
+                            continue
+                        }
+                        if (remaining > 0) {
+                            withTimeoutOrNull(remaining) { shortConnections.first { it } }
+                            continue
+                        }
                         val start = SystemClock.elapsedRealtime()
-                        main.removeCallbacks(watchdog)
-                        main.postDelayed(watchdog, 48000)
-                        added.set(0)
-                        val read = withTimeout(44000) { collectOnce(round) }
-                        sendState("已连接", read.samples, true, read.status + "。" + sleepDiagnostic)
-                        main.removeCallbacks(watchdog)
-                        // The authenticated socket keeps receiving events and commands while idle.
-                        // Check the battery when the next health read is due.
-                        val next = start + 300_000L
-                        delay((next - SystemClock.elapsedRealtime()).coerceAtLeast(0))
                         main.postDelayed(watchdog, 14_000)
                         val battery = DeviceInfoRequest(ch).fetchStatus(7_500).battery
                         deliverPower(battery)
                         main.removeCallbacks(watchdog)
+                        main.postDelayed(watchdog, 48_000)
+                        added.set(0)
+                        val read = withTimeout(44_000) { collectOnce(round) }
+                        sendState("已连接", read.samples, true, read.status + "。" + sleepDiagnostic)
+                        main.removeCallbacks(watchdog)
+                        nextReadAt = start + 300_000L
                         round = Round()
                         activeRound.set(round)
                     }

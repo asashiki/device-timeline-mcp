@@ -22,7 +22,7 @@ internal class WristRemote(private val context: Context) {
         val url = origin.newBuilder().encodedPath(origin.encodedPath.trimEnd('/') + "/api/devices/wrist/" + path)
             .query(null).fragment(null).build()
         val req = Request.Builder().url(url).header("Authorization","Bearer "+settings.token)
-            .header("X-Hibi-Wrist-Version", "2")
+            .header("X-Hibi-Wrist-Version", "3")
             .post(data.toString().toRequestBody("application/json".toMediaType())).build()
         http.newCall(req).execute().use { response ->
             if (path == "receipt" && response.code == 404) return@withContext JSONObject()
@@ -41,6 +41,7 @@ internal class WristRemote(private val context: Context) {
                 val link=BandLinkClient.state.value
                 val state=JSONObject().put("connected",link.connected).put("note",link.note.take(100))
                     .put("since",link.since).put("version",1)
+                if (link.standby) state.put("standby", true)
                 link.battery?.takeIf { link.batteryAt>0 }?.let {
                     state.put("battery",it).put("batteryAt",link.batteryAt).put("powerMode",link.powerMode)
                 }
@@ -49,7 +50,7 @@ internal class WristRemote(private val context: Context) {
                 val receipt=JSONObject().put("id",id).put("status","unconfirmed").put("detail","执行时连接中断")
                 if (!prefs.edit().putString("receipt",receipt.toString()).commit()) continue
                 val (status,detail)=if(System.currentTimeMillis()>cmd.getLong("expiresAt"))
-                    "expired" to "指令已过期" else BandLinkClient.command(cmd.getString("action"),cmd.getJSONObject("args"))
+                    "expired" to "指令已过期" else BandLinkClient.command(cmd.getString("action"),cmd.getJSONObject("args").put("__expiresAt",cmd.getLong("expiresAt")))
                 if (cmd.getString("action") == "wake-at" && status == "wake-reminder") {
                     receipt.put("wakeMode", "reminder").put("status", "confirmed")
                 } else receipt.put("status", status)
